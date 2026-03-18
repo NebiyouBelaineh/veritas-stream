@@ -214,5 +214,5 @@ __marimo__/
 backup/
 
 # apex_ledger_starter/
-bin/
 documents/
+data/
