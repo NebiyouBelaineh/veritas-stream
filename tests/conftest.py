@@ -4,6 +4,9 @@ tests/conftest.py — shared fixtures
 import pytest, sys, os, random
 from pathlib import Path
 from faker import Faker
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).parent.parent / ".env")
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
