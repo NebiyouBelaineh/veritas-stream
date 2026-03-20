@@ -78,6 +78,7 @@ class LoanApplicationAggregate:
 
     # Business rule state
     credit_analysis_done: bool = False
+    fraud_done: bool = False
     compliance_verdict: str | None = None          # "CLEAR" | "BLOCKED" | "CONDITIONAL"
     recommendation: str | None = None              # from DecisionGenerated
     confidence: float | None = None               # from DecisionGenerated
@@ -125,6 +126,7 @@ class LoanApplicationAggregate:
 
         elif et == "FraudScreeningCompleted":
             self.state = ApplicationState.FRAUD_SCREENING_COMPLETE
+            self.fraud_done = True
 
         elif et == "ComplianceCheckRequested":
             self.state = ApplicationState.COMPLIANCE_CHECK_REQUESTED
