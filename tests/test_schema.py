@@ -26,9 +26,9 @@ SCHEMA_PATH = os.path.join(os.path.dirname(__file__), "..", "schema.sql")
 
 # ─── FIXTURES ─────────────────────────────────────────────────────────────────
 
-@pytest_asyncio.fixture(scope="module")
+@pytest_asyncio.fixture()
 async def conn():
-    """Single connection for the whole module; applies schema once."""
+    """Per-test connection; applies schema before each test."""
     c = await asyncpg.connect(DB_URL)
     with open(SCHEMA_PATH) as f:
         await c.execute(f.read())
