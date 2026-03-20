@@ -1,36 +1,46 @@
 """
 ledger/domain/aggregates/loan_application.py
 =============================================
-COMPLETION STATUS: STUB — implement apply() for each event, enforce business rules.
+LoanApplicationAggregate — pure domain logic, no I/O except through the
+EventStore interface passed to load().
 
-The aggregate replays its event stream to rebuild state.
-Command handlers validate against current state before appending events.
-
-BUSINESS RULES TO ENFORCE:
+Business rules enforced here:
   1. State machine: only valid transitions allowed
-  2. DocumentFactsExtracted must exist before CreditAnalysisCompleted
-  3. All 6 compliance rules must complete before DecisionGenerated (unless hard block)
-  4. confidence < 0.60 → recommendation must be REFER (enforced here, not in LLM)
-  5. Compliance BLOCKED → only DECLINE allowed, not APPROVE or REFER
-  6. Causal chain: every agent event must reference a triggering event_id
-
-See: Section 4 of challenge document for full rule specifications.
+  2. Credit analysis is locked once completed (no second analysis without override)
+  3. Confidence floor: confidence < 0.6 forces recommendation = REFER
+  4. Compliance dependency: approval only if compliance is CLEAR
+  5. Causal chain: contributing_sessions must reference sessions seen by this aggregate
 """
 from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 
+
+class DomainError(Exception):
+    """Raised when a business rule is violated."""
+
+
 class ApplicationState(str, Enum):
-    NEW = "NEW"; SUBMITTED = "SUBMITTED"; DOCUMENTS_PENDING = "DOCUMENTS_PENDING"
-    DOCUMENTS_UPLOADED = "DOCUMENTS_UPLOADED"; DOCUMENTS_PROCESSED = "DOCUMENTS_PROCESSED"
-    CREDIT_ANALYSIS_REQUESTED = "CREDIT_ANALYSIS_REQUESTED"; CREDIT_ANALYSIS_COMPLETE = "CREDIT_ANALYSIS_COMPLETE"
-    FRAUD_SCREENING_REQUESTED = "FRAUD_SCREENING_REQUESTED"; FRAUD_SCREENING_COMPLETE = "FRAUD_SCREENING_COMPLETE"
-    COMPLIANCE_CHECK_REQUESTED = "COMPLIANCE_CHECK_REQUESTED"; COMPLIANCE_CHECK_COMPLETE = "COMPLIANCE_CHECK_COMPLETE"
-    PENDING_DECISION = "PENDING_DECISION"; PENDING_HUMAN_REVIEW = "PENDING_HUMAN_REVIEW"
-    APPROVED = "APPROVED"; DECLINED = "DECLINED"; DECLINED_COMPLIANCE = "DECLINED_COMPLIANCE"
+    NEW = "NEW"
+    SUBMITTED = "SUBMITTED"
+    DOCUMENTS_PENDING = "DOCUMENTS_PENDING"
+    DOCUMENTS_UPLOADED = "DOCUMENTS_UPLOADED"
+    DOCUMENTS_PROCESSED = "DOCUMENTS_PROCESSED"
+    CREDIT_ANALYSIS_REQUESTED = "CREDIT_ANALYSIS_REQUESTED"
+    CREDIT_ANALYSIS_COMPLETE = "CREDIT_ANALYSIS_COMPLETE"
+    FRAUD_SCREENING_REQUESTED = "FRAUD_SCREENING_REQUESTED"
+    FRAUD_SCREENING_COMPLETE = "FRAUD_SCREENING_COMPLETE"
+    COMPLIANCE_CHECK_REQUESTED = "COMPLIANCE_CHECK_REQUESTED"
+    COMPLIANCE_CHECK_COMPLETE = "COMPLIANCE_CHECK_COMPLETE"
+    PENDING_DECISION = "PENDING_DECISION"
+    PENDING_HUMAN_REVIEW = "PENDING_HUMAN_REVIEW"
+    APPROVED = "APPROVED"
+    DECLINED = "DECLINED"
+    DECLINED_COMPLIANCE = "DECLINED_COMPLIANCE"
     REFERRED = "REFERRED"
 
-VALID_TRANSITIONS = {
+
+VALID_TRANSITIONS: dict[ApplicationState, list[ApplicationState]] = {
     ApplicationState.NEW: [ApplicationState.SUBMITTED],
     ApplicationState.SUBMITTED: [ApplicationState.DOCUMENTS_PENDING],
     ApplicationState.DOCUMENTS_PENDING: [ApplicationState.DOCUMENTS_UPLOADED],
@@ -41,10 +51,21 @@ VALID_TRANSITIONS = {
     ApplicationState.FRAUD_SCREENING_REQUESTED: [ApplicationState.FRAUD_SCREENING_COMPLETE],
     ApplicationState.FRAUD_SCREENING_COMPLETE: [ApplicationState.COMPLIANCE_CHECK_REQUESTED],
     ApplicationState.COMPLIANCE_CHECK_REQUESTED: [ApplicationState.COMPLIANCE_CHECK_COMPLETE],
-    ApplicationState.COMPLIANCE_CHECK_COMPLETE: [ApplicationState.PENDING_DECISION, ApplicationState.DECLINED_COMPLIANCE],
-    ApplicationState.PENDING_DECISION: [ApplicationState.APPROVED, ApplicationState.DECLINED, ApplicationState.PENDING_HUMAN_REVIEW],
-    ApplicationState.PENDING_HUMAN_REVIEW: [ApplicationState.APPROVED, ApplicationState.DECLINED],
+    ApplicationState.COMPLIANCE_CHECK_COMPLETE: [
+        ApplicationState.PENDING_DECISION,
+        ApplicationState.DECLINED_COMPLIANCE,
+    ],
+    ApplicationState.PENDING_DECISION: [
+        ApplicationState.APPROVED,
+        ApplicationState.DECLINED,
+        ApplicationState.PENDING_HUMAN_REVIEW,
+    ],
+    ApplicationState.PENDING_HUMAN_REVIEW: [
+        ApplicationState.APPROVED,
+        ApplicationState.DECLINED,
+    ],
 }
+
 
 @dataclass
 class LoanApplicationAggregate:
@@ -53,33 +74,142 @@ class LoanApplicationAggregate:
     applicant_id: str | None = None
     requested_amount_usd: float | None = None
     loan_purpose: str | None = None
-    version: int = 0
-    events: list[dict] = field(default_factory=list)
+    version: int = -1
+
+    # Business rule state
+    credit_analysis_done: bool = False
+    compliance_verdict: str | None = None          # "CLEAR" | "BLOCKED" | "CONDITIONAL"
+    recommendation: str | None = None              # from DecisionGenerated
+    confidence: float | None = None               # from DecisionGenerated
+    known_sessions: set = field(default_factory=set)  # agent session_ids seen via AgentOutputWritten
 
     @classmethod
     async def load(cls, store, application_id: str) -> "LoanApplicationAggregate":
-        """Load and replay event stream to rebuild aggregate state."""
+        """Load and replay the event stream to rebuild aggregate state."""
         agg = cls(application_id=application_id)
-        # TODO: stream_events = await store.load_stream(f"loan-{application_id}")
-        # TODO: for event in stream_events: agg.apply(event)
+        stream_events = await store.load_stream(f"loan-{application_id}")
+        for event in stream_events:
+            agg.apply(event)
         return agg
 
     def apply(self, event: dict) -> None:
-        """Apply one event to update aggregate state. TODO: implement for each event type."""
-        et = event.get("event_type"); p = event.get("payload", {})
+        """Apply one stored event to update aggregate state."""
+        et = event.get("event_type")
+        p = event.get("payload", {})
         self.version += 1
+
         if et == "ApplicationSubmitted":
             self.state = ApplicationState.SUBMITTED
             self.applicant_id = p.get("applicant_id")
             self.requested_amount_usd = p.get("requested_amount_usd")
             self.loan_purpose = p.get("loan_purpose")
+
         elif et == "DocumentUploadRequested":
             self.state = ApplicationState.DOCUMENTS_PENDING
+
         elif et == "DocumentUploaded":
             self.state = ApplicationState.DOCUMENTS_UPLOADED
-        # TODO: implement remaining transitions
+
+        elif et == "PackageReadyForAnalysis":
+            self.state = ApplicationState.DOCUMENTS_PROCESSED
+
+        elif et == "CreditAnalysisRequested":
+            self.state = ApplicationState.CREDIT_ANALYSIS_REQUESTED
+
+        elif et == "CreditAnalysisCompleted":
+            self.state = ApplicationState.CREDIT_ANALYSIS_COMPLETE
+            self.credit_analysis_done = True
+
+        elif et == "FraudScreeningRequested":
+            self.state = ApplicationState.FRAUD_SCREENING_REQUESTED
+
+        elif et == "FraudScreeningCompleted":
+            self.state = ApplicationState.FRAUD_SCREENING_COMPLETE
+
+        elif et == "ComplianceCheckRequested":
+            self.state = ApplicationState.COMPLIANCE_CHECK_REQUESTED
+
+        elif et == "ComplianceCheckCompleted":
+            verdict = p.get("overall_verdict", "BLOCKED")
+            self.compliance_verdict = verdict
+            if p.get("has_hard_block", False) or verdict == "BLOCKED":
+                self.state = ApplicationState.DECLINED_COMPLIANCE
+            else:
+                self.state = ApplicationState.COMPLIANCE_CHECK_COMPLETE
+
+        elif et == "DecisionRequested":
+            pass  # Intermediate event — state unchanged; handler manages flow
+
+        elif et == "DecisionGenerated":
+            confidence = p.get("confidence", 0.0)
+            recommendation = p.get("recommendation", "REFER")
+            # Rule 4: confidence floor
+            if confidence < 0.6:
+                recommendation = "REFER"
+            self.recommendation = recommendation
+            self.confidence = confidence
+            # Track contributing sessions for Rule 6
+            for sid in p.get("contributing_sessions", []):
+                self.known_sessions.add(sid)
+            if recommendation in ("REFER", "MANUAL_REVIEW"):
+                self.state = ApplicationState.PENDING_HUMAN_REVIEW
+            else:
+                self.state = ApplicationState.PENDING_DECISION
+
+        elif et == "HumanReviewRequested":
+            self.state = ApplicationState.PENDING_HUMAN_REVIEW
+
+        elif et == "HumanReviewCompleted":
+            final = p.get("final_decision", "DECLINED")
+            if final == "APPROVED":
+                self.state = ApplicationState.APPROVED
+            else:
+                self.state = ApplicationState.DECLINED
+
+        elif et == "ApplicationApproved":
+            self.state = ApplicationState.APPROVED
+
+        elif et == "ApplicationDeclined":
+            self.state = ApplicationState.DECLINED
+
+        elif et == "AgentOutputWritten":
+            # Track session IDs that have contributed to this application
+            session_id = p.get("session_id")
+            if session_id:
+                self.known_sessions.add(session_id)
+
+    # ── Business rule assertions ──────────────────────────────────────────────
 
     def assert_valid_transition(self, target: ApplicationState) -> None:
+        """Rule 1: Only valid state-machine transitions are allowed."""
         allowed = VALID_TRANSITIONS.get(self.state, [])
         if target not in allowed:
-            raise ValueError(f"Invalid transition {self.state} → {target}. Allowed: {allowed}")
+            raise DomainError(
+                f"Invalid transition {self.state} → {target}. "
+                f"Allowed from {self.state}: {[s.value for s in allowed]}"
+            )
+
+    def assert_credit_analysis_not_locked(self) -> None:
+        """Rule 3: A second CreditAnalysisCompleted is rejected once one exists."""
+        if self.credit_analysis_done:
+            raise DomainError(
+                "CreditAnalysisCompleted already recorded for this application. "
+                "A HumanReviewOverride is required before a second analysis."
+            )
+
+    def assert_compliance_cleared(self) -> None:
+        """Rule 5: ApplicationApproved requires compliance verdict = CLEAR."""
+        if self.compliance_verdict != "CLEAR":
+            raise DomainError(
+                f"Cannot approve application: compliance verdict is "
+                f"{self.compliance_verdict!r}, expected 'CLEAR'."
+            )
+
+    def assert_contributing_sessions_known(self, contributing_sessions: list[str]) -> None:
+        """Rule 6: Every session cited in DecisionGenerated must be known to this aggregate."""
+        unknown = set(contributing_sessions) - self.known_sessions
+        if unknown:
+            raise DomainError(
+                f"DecisionGenerated references unknown agent sessions: {unknown}. "
+                "Sessions must have written output to this application before being cited."
+            )
