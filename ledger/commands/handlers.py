@@ -21,6 +21,7 @@ from decimal import Decimal
 from ledger.event_store import OptimisticConcurrencyError  # re-exported for callers
 from ledger.domain.aggregates.loan_application import (
     LoanApplicationAggregate,
+    ApplicationState,
     DomainError,
 )
 from ledger.domain.aggregates.agent_session import AgentSessionAggregate
@@ -150,12 +151,8 @@ async def handle_submit_application(
     Raises DomainError if the application already exists.
     """
     stream_id = f"loan-{cmd.application_id}"
-    current = await store.stream_version(stream_id)
-    if current != -1:
-        raise DomainError(
-            f"Application {cmd.application_id!r} already exists "
-            f"(stream version={current})."
-        )
+    loan_agg = await LoanApplicationAggregate.load(store, cmd.application_id)
+    loan_agg.assert_is_new()
 
     event = {
         "event_type": "ApplicationSubmitted",
@@ -174,7 +171,7 @@ async def handle_submit_application(
         },
     }
     positions = await store.append(
-        stream_id, [event], expected_version=-1,
+        stream_id, [event], expected_version=loan_agg.version,
         causation_id=cmd.causation_id, correlation_id=cmd.correlation_id,
     )
     return {"stream_id": stream_id, "version": positions[-1]}
@@ -253,6 +250,7 @@ async def handle_credit_analysis_completed(
         store, agent_stream, cmd.agent_id, cmd.session_id
     )
 
+    loan_agg.assert_valid_transition(ApplicationState.CREDIT_ANALYSIS_COMPLETE)  # Rule 1
     loan_agg.assert_credit_analysis_not_locked()        # Rule 3
     agent_agg.assert_context_loaded()                   # Rule 2 (Gas Town)
     agent_agg.assert_model_version_current(cmd.model_version)  # Rule 3
@@ -302,6 +300,7 @@ async def handle_fraud_screening_completed(
     agent_agg = await AgentSessionAggregate.load_by_stream(
         store, agent_stream, cmd.agent_id, cmd.session_id
     )
+    loan_agg.assert_valid_transition(ApplicationState.FRAUD_SCREENING_COMPLETE)  # Rule 1
     agent_agg.assert_context_loaded()  # Rule 2 (Gas Town)
 
     event = {
@@ -399,14 +398,8 @@ async def handle_generate_decision(
     loan_stream = f"loan-{cmd.application_id}"
     loan_agg = await LoanApplicationAggregate.load(store, cmd.application_id)
 
-    if not loan_agg.credit_analysis_done:
-        raise DomainError(
-            "Cannot generate decision: credit analysis has not been completed."
-        )
-    if not loan_agg.fraud_done:
-        raise DomainError(
-            "Cannot generate decision: fraud screening has not been completed."
-        )
+    loan_agg.assert_credit_analysis_done()
+    loan_agg.assert_fraud_done()
 
     if cmd.required_compliance_rules:
         compliance_agg = await ComplianceRecordAggregate.load(store, cmd.application_id)
