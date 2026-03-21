@@ -460,3 +460,41 @@ async def test_decision_without_all_analyses_raises():
             ),
             store,
         )
+
+
+# ── Test 7: correlation_id and causation_id threaded through handler ──────────
+
+@pytest.mark.asyncio
+async def test_correlation_id_threaded_through_command_handler():
+    """
+    correlation_id and causation_id on a command must appear in the stored
+    event's metadata. Proves the handler passes causal metadata through to
+    store.append() rather than discarding it — required for distributed
+    tracing and causal chain audits.
+    """
+    store = InMemoryEventStore()
+    corr_id = "trace-12345"
+    cause_id = "cmd-67890"
+
+    await handle_submit_application(
+        SubmitApplicationCommand(
+            application_id="APEX-CORR-001",
+            applicant_id="corr-tester",
+            requested_amount_usd=Decimal("100000"),
+            loan_purpose="working_capital",
+            loan_term_months=12,
+            correlation_id=corr_id,
+            causation_id=cause_id,
+        ),
+        store,
+    )
+
+    events = await store.load_stream("loan-APEX-CORR-001")
+    assert len(events) == 1
+    meta = events[0]["metadata"]
+    assert meta.get("correlation_id") == corr_id, (
+        f"correlation_id not threaded through handler to event metadata: {meta}"
+    )
+    assert meta.get("causation_id") == cause_id, (
+        f"causation_id not threaded through handler to event metadata: {meta}"
+    )
