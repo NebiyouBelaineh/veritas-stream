@@ -44,6 +44,8 @@ class SubmitApplicationCommand:
     contact_email: str = ""
     contact_name: str = ""
     application_reference: str = ""
+    correlation_id: str | None = None
+    causation_id: str | None = None
 
 
 @dataclass
@@ -56,6 +58,8 @@ class StartAgentSessionCommand:
     langgraph_graph_version: str = "1.0"
     context_source: str = "event_store"
     context_token_count: int = 0
+    correlation_id: str | None = None
+    causation_id: str | None = None
 
 
 @dataclass
@@ -70,6 +74,8 @@ class CreditAnalysisCompletedCommand:
     input_data_hash: str = "n/a"
     analysis_duration_ms: int = 0
     regulatory_basis: list = field(default_factory=list)
+    correlation_id: str | None = None
+    causation_id: str | None = None
 
 
 @dataclass
@@ -84,6 +90,8 @@ class FraudScreeningCompletedCommand:
     screening_model_version: str
     input_data_hash: str = "n/a"
     anomalies_found: int = 0
+    correlation_id: str | None = None
+    causation_id: str | None = None
 
 
 @dataclass
@@ -99,6 +107,8 @@ class ComplianceCheckCommand:
     is_hard_block: bool = False
     failure_reason: str = ""
     remediation_available: bool = False
+    correlation_id: str | None = None
+    causation_id: str | None = None
 
 
 @dataclass
@@ -114,6 +124,8 @@ class GenerateDecisionCommand:
     key_risks: list = field(default_factory=list)
     model_versions: dict = field(default_factory=dict)
     required_compliance_rules: set = field(default_factory=set)
+    correlation_id: str | None = None
+    causation_id: str | None = None
 
 
 @dataclass
@@ -124,6 +136,8 @@ class HumanReviewCompletedCommand:
     original_recommendation: str
     final_decision: str      # "APPROVED" | "DECLINED"
     override_reason: str | None = None
+    correlation_id: str | None = None
+    causation_id: str | None = None
 
 
 # ── Handlers ─────────────────────────────────────────────────────────────────
@@ -159,7 +173,10 @@ async def handle_submit_application(
             "submitted_at": _now(),
         },
     }
-    positions = await store.append(stream_id, [event], expected_version=-1)
+    positions = await store.append(
+        stream_id, [event], expected_version=-1,
+        causation_id=cmd.causation_id, correlation_id=cmd.correlation_id,
+    )
     return {"stream_id": stream_id, "version": positions[-1]}
 
 
@@ -209,7 +226,10 @@ async def handle_start_agent_session(
             },
         },
     ]
-    positions = await store.append(stream_id, events, expected_version=-1)
+    positions = await store.append(
+        stream_id, events, expected_version=-1,
+        causation_id=cmd.causation_id, correlation_id=cmd.correlation_id,
+    )
     return {"stream_id": stream_id, "version": positions[-1]}
 
 
@@ -253,7 +273,8 @@ async def handle_credit_analysis_completed(
         },
     }
     positions = await store.append(
-        loan_stream, [event], expected_version=loan_agg.version
+        loan_stream, [event], expected_version=loan_agg.version,
+        causation_id=cmd.causation_id, correlation_id=cmd.correlation_id,
     )
     return {"stream_id": loan_stream, "version": positions[-1]}
 
@@ -299,7 +320,8 @@ async def handle_fraud_screening_completed(
         },
     }
     positions = await store.append(
-        loan_stream, [event], expected_version=loan_agg.version
+        loan_stream, [event], expected_version=loan_agg.version,
+        causation_id=cmd.causation_id, correlation_id=cmd.correlation_id,
     )
     return {"stream_id": loan_stream, "version": positions[-1]}
 
@@ -354,7 +376,8 @@ async def handle_compliance_check(
         }
 
     positions = await store.append(
-        compliance_stream, [event], expected_version=compliance_agg.version
+        compliance_stream, [event], expected_version=compliance_agg.version,
+        causation_id=cmd.causation_id, correlation_id=cmd.correlation_id,
     )
     return {"stream_id": compliance_stream, "version": positions[-1]}
 
@@ -422,7 +445,8 @@ async def handle_generate_decision(
         },
     }
     positions = await store.append(
-        loan_stream, [event], expected_version=loan_agg.version
+        loan_stream, [event], expected_version=loan_agg.version,
+        causation_id=cmd.causation_id, correlation_id=cmd.correlation_id,
     )
     return {
         "stream_id": loan_stream,
@@ -463,7 +487,8 @@ async def handle_human_review_completed(
         },
     }
     positions = await store.append(
-        loan_stream, [event], expected_version=loan_agg.version
+        loan_stream, [event], expected_version=loan_agg.version,
+        causation_id=cmd.causation_id, correlation_id=cmd.correlation_id,
     )
     return {
         "stream_id": loan_stream,

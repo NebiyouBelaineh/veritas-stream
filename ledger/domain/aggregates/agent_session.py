@@ -52,37 +52,46 @@ class AgentSessionAggregate:
         return agg
 
     def apply(self, event: dict) -> None:
-        """Apply one stored event."""
-        et = event.get("event_type")
-        p = event.get("payload", {})
+        """Apply one stored event by dispatching to the matching _on_* handler."""
         self.version += 1
+        et = event.get("event_type", "")
+        handler = getattr(self, f"_on_{et}", None)
+        if handler:
+            handler(event.get("payload", {}))
 
-        if et == "AgentSessionStarted":
-            self.agent_type = p.get("agent_type")
-            self.application_id = p.get("application_id")
-            self.model_version = p.get("model_version")
+    # ── Per-event handlers ────────────────────────────────────────────────────
 
-        elif et == "AgentInputValidated":
-            # Context is considered loaded once inputs are validated
-            self.context_loaded = True
+    def _on_AgentSessionStarted(self, p: dict) -> None:
+        # Transition: initialise session identity and declared model version.
+        self.agent_type = p.get("agent_type")
+        self.application_id = p.get("application_id")
+        self.model_version = p.get("model_version")
 
-        elif et == "AgentContextLoaded":
-            # Explicit context-loaded event (Gas Town pattern)
-            self.context_loaded = True
+    def _on_AgentInputValidated(self, p: dict) -> None:
+        # Transition: inputs validated — context is now loaded (Gas Town).
+        self.context_loaded = True
 
-        elif et == "AgentNodeExecuted":
-            node_name = p.get("node_name")
-            if node_name:
-                self.completed_nodes.append(node_name)
+    def _on_AgentContextLoaded(self, p: dict) -> None:
+        # Transition: explicit context-loaded event satisfies Gas Town pattern.
+        self.context_loaded = True
 
-        elif et == "AgentSessionCompleted":
-            self.is_completed = True
+    def _on_AgentNodeExecuted(self, p: dict) -> None:
+        # Transition: record completed node for crash-recovery resume point.
+        node_name = p.get("node_name")
+        if node_name:
+            self.completed_nodes.append(node_name)
 
-        elif et == "AgentSessionFailed":
-            self.is_failed = True
+    def _on_AgentSessionCompleted(self, p: dict) -> None:
+        # Transition: session reached a terminal success state.
+        self.is_completed = True
 
-        elif et == "AgentSessionRecovered":
-            self.is_failed = False
+    def _on_AgentSessionFailed(self, p: dict) -> None:
+        # Transition: session reached a terminal failure state.
+        self.is_failed = True
+
+    def _on_AgentSessionRecovered(self, p: dict) -> None:
+        # Transition: recovered session clears the failure flag before resuming.
+        self.is_failed = False
 
     # ── Business rule assertions ──────────────────────────────────────────────
 
