@@ -81,6 +81,17 @@ async def _run_lifecycle(store, app_id: str = APP_ID, final_decision: str = "APP
         store,
     )
 
+    # 2b. Advance loan state through document processing to CREDIT_ANALYSIS_REQUESTED.
+    # No command handlers exist for these stages; seed events directly.
+    _loan_stream = f"loan-{app_id}"
+    _loan_ver = await store.stream_version(_loan_stream)
+    await store.append(_loan_stream, [
+        {"event_type": "DocumentUploadRequested", "event_version": 1, "payload": {}},
+        {"event_type": "DocumentUploaded", "event_version": 1, "payload": {}},
+        {"event_type": "PackageReadyForAnalysis", "event_version": 1, "payload": {}},
+        {"event_type": "CreditAnalysisRequested", "event_version": 1, "payload": {}},
+    ], expected_version=_loan_ver)
+
     # 3. Credit analysis
     await handle_credit_analysis_completed(
         CreditAnalysisCompletedCommand(
@@ -99,6 +110,12 @@ async def _run_lifecycle(store, app_id: str = APP_ID, final_decision: str = "APP
         ),
         store,
     )
+
+    # 3b. Advance loan state to FRAUD_SCREENING_REQUESTED.
+    _loan_ver = await store.stream_version(_loan_stream)
+    await store.append(_loan_stream, [
+        {"event_type": "FraudScreeningRequested", "event_version": 1, "payload": {}},
+    ], expected_version=_loan_ver)
 
     # 4. Start fraud agent session
     await handle_start_agent_session(
@@ -323,6 +340,16 @@ async def test_agent_cannot_act_without_session():
         store,
     )
 
+    # Advance loan state to CREDIT_ANALYSIS_REQUESTED so Rule 1 passes,
+    # allowing Rule 2 (Gas Town) to be the failing guard.
+    _loan_ver = await store.stream_version(f"loan-{app_id}")
+    await store.append(f"loan-{app_id}", [
+        {"event_type": "DocumentUploadRequested", "event_version": 1, "payload": {}},
+        {"event_type": "DocumentUploaded", "event_version": 1, "payload": {}},
+        {"event_type": "PackageReadyForAnalysis", "event_version": 1, "payload": {}},
+        {"event_type": "CreditAnalysisRequested", "event_version": 1, "payload": {}},
+    ], expected_version=_loan_ver)
+
     # Attempt credit analysis without ever calling handle_start_agent_session
     with pytest.raises(DomainError, match="context"):
         await handle_credit_analysis_completed(
@@ -435,6 +462,14 @@ async def test_decision_without_all_analyses_raises():
         ),
         store,
     )
+    # Advance loan state to CREDIT_ANALYSIS_REQUESTED before the handler call.
+    _loan_ver = await store.stream_version(f"loan-{app_id}")
+    await store.append(f"loan-{app_id}", [
+        {"event_type": "DocumentUploadRequested", "event_version": 1, "payload": {}},
+        {"event_type": "DocumentUploaded", "event_version": 1, "payload": {}},
+        {"event_type": "PackageReadyForAnalysis", "event_version": 1, "payload": {}},
+        {"event_type": "CreditAnalysisRequested", "event_version": 1, "payload": {}},
+    ], expected_version=_loan_ver)
     await handle_credit_analysis_completed(
         CreditAnalysisCompletedCommand(
             application_id=app_id,
