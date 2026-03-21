@@ -10,7 +10,13 @@ Run: pytest tests/test_event_store.py -v
 """
 import asyncio, os, pytest, sys
 from pathlib import Path; sys.path.insert(0, str(Path(__file__).parent.parent))
-from ledger.event_store import EventStore, OptimisticConcurrencyError
+from ledger.event_store import (
+    EventStore,
+    InMemoryEventStore,
+    OptimisticConcurrencyError,
+    StreamArchivedError,
+    StreamMetadata,
+)
 
 DB_URL = os.environ.get("DATABASE_URL", "postgresql://postgres:apex@localhost/apex_ledger")
 
@@ -83,3 +89,52 @@ async def test_load_all_yields_in_global_order(store):
     all_events = [e async for e in store.load_all(from_position=0)]
     positions = [e["global_position"] for e in all_events]
     assert positions == sorted(positions)
+
+
+# ── archive_stream / get_stream_metadata (in-memory, no DB required) ──────────
+
+@pytest.fixture
+def mem():
+    return InMemoryEventStore()
+
+
+async def test_get_stream_metadata_returns_correct_version(mem):
+    """get_stream_metadata.current_version agrees with stream_version()."""
+    await mem.append("loan-meta-001", _event("E", 3), expected_version=-1)
+    expected_v = await mem.stream_version("loan-meta-001")
+    meta = await mem.get_stream_metadata("loan-meta-001")
+    assert isinstance(meta, StreamMetadata)
+    assert meta.stream_id == "loan-meta-001"
+    assert meta.current_version == expected_v
+    assert meta.is_archived is False
+
+
+async def test_get_stream_metadata_raises_for_unknown_stream(mem):
+    """get_stream_metadata raises KeyError for a stream that has never been written to."""
+    with pytest.raises(KeyError, match="not found"):
+        await mem.get_stream_metadata("loan-does-not-exist")
+
+
+async def test_archive_stream_prevents_further_appends(mem):
+    """archive_stream marks a stream closed; subsequent appends raise StreamArchivedError."""
+    await mem.append("loan-arch-001", _event("E"), expected_version=-1)
+    await mem.archive_stream("loan-arch-001")
+    with pytest.raises(StreamArchivedError):
+        await mem.append("loan-arch-001", _event("E2"), expected_version=1)
+
+
+async def test_archive_stream_reflects_in_metadata(mem):
+    """get_stream_metadata.is_archived returns True after archive_stream is called."""
+    await mem.append("loan-arch-002", _event("E"), expected_version=-1)
+    meta_before = await mem.get_stream_metadata("loan-arch-002")
+    assert meta_before.is_archived is False
+
+    await mem.archive_stream("loan-arch-002")
+    meta_after = await mem.get_stream_metadata("loan-arch-002")
+    assert meta_after.is_archived is True
+
+
+async def test_archive_stream_raises_for_unknown_stream(mem):
+    """archive_stream raises KeyError when the stream does not exist."""
+    with pytest.raises(KeyError):
+        await mem.archive_stream("loan-never-written")
