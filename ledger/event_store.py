@@ -10,6 +10,7 @@ COMPLETION CHECKLIST (implement in order):
 """
 from __future__ import annotations
 import json
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import AsyncGenerator
 from uuid import UUID
@@ -21,6 +22,27 @@ class OptimisticConcurrencyError(Exception):
     def __init__(self, stream_id: str, expected: int, actual: int):
         self.stream_id = stream_id; self.expected = expected; self.actual = actual
         super().__init__(f"OCC on '{stream_id}': expected v{expected}, actual v{actual}")
+
+
+class StreamArchivedError(Exception):
+    """Raised when attempting to append to an archived stream."""
+    def __init__(self, stream_id: str):
+        self.stream_id = stream_id
+        super().__init__(f"Cannot append to archived stream {stream_id!r}")
+
+
+@dataclass
+class StreamMetadata:
+    """Metadata for a stream without loading its events."""
+    stream_id: str
+    aggregate_type: str
+    current_version: int
+    created_at: datetime | None
+    archived_at: datetime | None
+
+    @property
+    def is_archived(self) -> bool:
+        return self.archived_at is not None
 
 
 class EventStore:
@@ -73,22 +95,26 @@ class EventStore:
             async with conn.transaction():
                 # 1. Lock stream row (prevents concurrent appends)
                 row = await conn.fetchrow(
-                    "SELECT current_version FROM event_streams "
+                    "SELECT current_version, archived_at FROM event_streams "
                     "WHERE stream_id = $1 FOR UPDATE", stream_id)
 
-                # 2. OCC check
+                # 2. Reject appends to archived streams
+                if row is not None and row["archived_at"] is not None:
+                    raise StreamArchivedError(stream_id)
+
+                # 3. OCC check
                 current = row["current_version"] if row else -1
                 if current != expected_version:
                     raise OptimisticConcurrencyError(stream_id, expected_version, current)
 
-                # 3. Create stream if new
+                # 4. Create stream if new
                 if row is None:
                     await conn.execute(
                         "INSERT INTO event_streams(stream_id, aggregate_type, current_version)"
                         " VALUES($1, $2, 0)",
                         stream_id, stream_id.split("-")[0])
 
-                # 4. Insert each event
+                # 5. Insert each event
                 # base is 0 for new streams (expected_version=-1) so first pos = 1
                 base = max(0, expected_version)
                 positions = []
@@ -107,7 +133,7 @@ class EventStore:
                         datetime.now(timezone.utc))
                     positions.append(pos)
 
-                # 5. Update stream version (= total event count = last position)
+                # 6. Update stream version (= total event count = last position)
                 await conn.execute(
                     "UPDATE event_streams SET current_version=$1 WHERE stream_id=$2",
                     base + len(events), stream_id)
@@ -179,6 +205,54 @@ class EventStore:
             if not row: return None
             return {**dict(row), "payload": dict(row["payload"]),
                                   "metadata": dict(row["metadata"])}
+
+    async def archive_stream(self, stream_id: str) -> None:
+        """
+        Marks stream_id as archived by setting archived_at on event_streams.
+
+        Precondition: stream_id must exist and must not already be archived.
+        Guarantee: after return, archived_at is set; subsequent appends raise
+            StreamArchivedError.
+        Raises:
+            KeyError: if stream does not exist or is already archived.
+        """
+        async with self._pool.acquire() as conn:
+            result = await conn.execute(
+                "UPDATE event_streams SET archived_at = clock_timestamp() "
+                "WHERE stream_id = $1 AND archived_at IS NULL",
+                stream_id,
+            )
+            if result == "UPDATE 0":
+                raise KeyError(
+                    f"Stream {stream_id!r} does not exist or is already archived"
+                )
+
+    async def get_stream_metadata(self, stream_id: str) -> StreamMetadata:
+        """
+        Returns metadata for stream_id without loading any events.
+
+        Precondition: stream_id must exist.
+        Guarantee: returns StreamMetadata with current_version, created_at,
+            archived_at; does not touch the events table.
+        Raises:
+            KeyError: if stream does not exist.
+        """
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT stream_id, aggregate_type, current_version, "
+                "       created_at, archived_at "
+                "FROM event_streams WHERE stream_id = $1",
+                stream_id,
+            )
+            if row is None:
+                raise KeyError(f"Stream {stream_id!r} not found")
+            return StreamMetadata(
+                stream_id=row["stream_id"],
+                aggregate_type=row["aggregate_type"],
+                current_version=row["current_version"],
+                created_at=row["created_at"],
+                archived_at=row["archived_at"],
+            )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -339,6 +413,10 @@ class InMemoryEventStore:
         self._checkpoints: dict[str, int] = {}
         # asyncio lock per stream for OCC
         self._locks: dict[str, _asyncio.Lock] = _defaultdict(_asyncio.Lock)
+        # archived stream IDs
+        self._archived: set[str] = set()
+        # created_at timestamps per stream (recorded on first append)
+        self._created_at: dict[str, _datetime] = {}
 
     async def stream_version(self, stream_id: str) -> int:
         return self._versions.get(stream_id, -1)
@@ -352,9 +430,16 @@ class InMemoryEventStore:
         metadata: dict | None = None,
     ) -> list[int]:
         async with self._locks[stream_id]:
+            if stream_id in self._archived:
+                raise StreamArchivedError(stream_id)
+
             current = self._versions.get(stream_id, -1)
             if current != expected_version:
                 raise OptimisticConcurrencyError(stream_id, expected_version, current)
+
+            now = _datetime.now(timezone.utc)
+            if stream_id not in self._created_at:
+                self._created_at[stream_id] = now
 
             positions = []
             meta = {**(metadata or {})}
@@ -372,7 +457,7 @@ class InMemoryEventStore:
                     "event_version": event.get("event_version", 1),
                     "payload": dict(event.get("payload", {})),
                     "metadata": meta,
-                    "recorded_at": _datetime.now(timezone.utc).isoformat(),
+                    "recorded_at": now.isoformat(),
                 }
                 self._streams[stream_id].append(stored)
                 self._global.append(stored)
@@ -404,6 +489,46 @@ class InMemoryEventStore:
             if e["event_id"] == event_id:
                 return e
         return None
+
+    async def archive_stream(self, stream_id: str) -> None:
+        """
+        Marks stream_id as archived; subsequent appends raise StreamArchivedError.
+
+        Precondition: stream_id must exist and must not already be archived.
+        Guarantee: stream_id added to _archived set; appends will be rejected.
+        Raises:
+            KeyError: if stream does not exist or is already archived.
+        """
+        async with self._locks[stream_id]:
+            if stream_id not in self._versions:
+                raise KeyError(
+                    f"Stream {stream_id!r} does not exist or is already archived"
+                )
+            if stream_id in self._archived:
+                raise KeyError(
+                    f"Stream {stream_id!r} does not exist or is already archived"
+                )
+            self._archived.add(stream_id)
+
+    async def get_stream_metadata(self, stream_id: str) -> StreamMetadata:
+        """
+        Returns metadata for stream_id without loading events.
+
+        Precondition: stream_id must exist.
+        Guarantee: returns StreamMetadata with current_version, created_at,
+            archived_at; does not scan the events list.
+        Raises:
+            KeyError: if stream does not exist.
+        """
+        if stream_id not in self._versions:
+            raise KeyError(f"Stream {stream_id!r} not found")
+        return StreamMetadata(
+            stream_id=stream_id,
+            aggregate_type=stream_id.split("-")[0],
+            current_version=self._versions[stream_id],
+            created_at=self._created_at.get(stream_id),
+            archived_at=_datetime.now(timezone.utc) if stream_id in self._archived else None,
+        )
 
     async def save_checkpoint(self, projection_name: str, position: int) -> None:
         self._checkpoints[projection_name] = position
