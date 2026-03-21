@@ -231,6 +231,28 @@ class LoanApplicationAggregate:
                 f"{self.compliance_verdict!r}, expected 'CLEAR'."
             )
 
+    def assert_is_new(self) -> None:
+        """Guard for submit_application: stream must not already exist."""
+        if self.version != -1:
+            raise DomainError(
+                f"Application {self.application_id!r} already exists "
+                f"(stream version={self.version})."
+            )
+
+    def assert_credit_analysis_done(self) -> None:
+        """Guard for generate_decision: credit analysis must be completed first."""
+        if not self.credit_analysis_done:
+            raise DomainError(
+                "Cannot generate decision: credit analysis has not been completed."
+            )
+
+    def assert_fraud_done(self) -> None:
+        """Guard for generate_decision: fraud screening must be completed first."""
+        if not self.fraud_done:
+            raise DomainError(
+                "Cannot generate decision: fraud screening has not been completed."
+            )
+
     def assert_contributing_sessions_known(self, contributing_sessions: list[str]) -> None:
         """Rule 6: Every session cited in DecisionGenerated must be known to this aggregate."""
         unknown = set(contributing_sessions) - self.known_sessions

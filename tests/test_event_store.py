@@ -25,6 +25,10 @@ async def store():
     s = EventStore(DB_URL); await s.connect()
     assert s._pool is not None
     async with s._pool.acquire() as conn:
+        await conn.execute(
+            "DELETE FROM outbox WHERE event_id IN "
+            "(SELECT event_id FROM events WHERE stream_id LIKE 'test-%')"
+        )
         await conn.execute("DELETE FROM events WHERE stream_id LIKE 'test-%'")
         await conn.execute("DELETE FROM event_streams WHERE stream_id LIKE 'test-%'")
     yield s
@@ -53,17 +57,31 @@ async def test_occ_wrong_version_raises(store):
 
 @pytest.mark.asyncio
 async def test_concurrent_double_append_exactly_one_succeeds(store):
-    """The critical OCC test: two concurrent appends, exactly one wins."""
-    await store.append("test-concurrent-001", _event("Init"), expected_version=-1)
+    """
+    Two agents simultaneously attempt to append to the same stream at version 3.
+    Exactly one must succeed. The other must raise OptimisticConcurrencyError.
+    Stream must have exactly 4 events total (3 pre-existing + 1 winner).
+    """
+    # Setup: stream at version 3 (3 pre-existing events)
+    await store.append("test-concurrent-001", _event("E1"), expected_version=-1)
+    await store.append("test-concurrent-001", _event("E2"), expected_version=1)
+    await store.append("test-concurrent-001", _event("E3"), expected_version=2)
+
     results = await asyncio.gather(
-        store.append("test-concurrent-001", _event("A"), expected_version=1),
-        store.append("test-concurrent-001", _event("B"), expected_version=1),
+        store.append("test-concurrent-001", _event("A"), expected_version=3),
+        store.append("test-concurrent-001", _event("B"), expected_version=3),
         return_exceptions=True,
     )
     successes = [r for r in results if isinstance(r, list)]
     errors = [r for r in results if isinstance(r, OptimisticConcurrencyError)]
+
+    # Assertion 1: exactly one task succeeded
     assert len(successes) == 1, f"Expected exactly 1 success, got {len(successes)}"
+    # Assertion 2: exactly one task raised OptimisticConcurrencyError (not silently caught)
     assert len(errors) == 1
+    # Assertion 3: winning event is at position 4; total stream length is 4
+    assert successes[0] == [4], f"Winning event must be at stream_position 4, got {successes[0]}"
+    assert await store.stream_version("test-concurrent-001") == 4
 
 @pytest.mark.asyncio
 async def test_load_stream_ordered(store):
@@ -138,3 +156,57 @@ async def test_archive_stream_raises_for_unknown_stream(mem):
     """archive_stream raises KeyError when the stream does not exist."""
     with pytest.raises(KeyError):
         await mem.archive_stream("loan-never-written")
+
+
+# ── Outbox transactional atomicity (live DB) ──────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_outbox_written_in_same_transaction_as_event(store):
+    """
+    append() must write the outbox row in the same DB transaction as the event.
+    If the two writes were separate transactions, a process crash between them
+    would leave an event with no outbox row — breaking guaranteed delivery.
+    This test proves they are atomic: a committed event always has a matching
+    outbox row.
+    """
+    stream_id = "test-outbox-tx-001"
+    await store.append(stream_id, _event("OutboxTest"), expected_version=-1)
+
+    events = await store.load_stream(stream_id)
+    assert len(events) == 1
+    event_id = events[0]["event_id"]
+
+    async with store._pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT event_id FROM outbox WHERE event_id = $1", event_id
+        )
+    assert row is not None, (
+        f"No outbox row found for event_id={event_id}. "
+        "append() must write event and outbox row in the same transaction."
+    )
+
+
+# ── correlation_id / causation_id stored in metadata (in-memory) ─────────────
+
+async def test_correlation_id_and_causation_id_stored_in_metadata(mem):
+    """
+    append() must store correlation_id and causation_id in the stored event's
+    metadata dict. These fields are required for distributed tracing and for
+    the causal chain audit that links commands to the events they produced.
+    """
+    await mem.append(
+        "loan-corr-001",
+        _event("TestEvent"),
+        expected_version=-1,
+        correlation_id="corr-abc-123",
+        causation_id="cause-xyz-456",
+    )
+    events = await mem.load_stream("loan-corr-001")
+    assert len(events) == 1
+    meta = events[0]["metadata"]
+    assert meta.get("correlation_id") == "corr-abc-123", (
+        f"correlation_id not stored in event metadata: {meta}"
+    )
+    assert meta.get("causation_id") == "cause-xyz-456", (
+        f"causation_id not stored in event metadata: {meta}"
+    )

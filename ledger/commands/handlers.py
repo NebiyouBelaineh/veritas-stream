@@ -21,6 +21,7 @@ from decimal import Decimal
 from ledger.event_store import OptimisticConcurrencyError  # re-exported for callers
 from ledger.domain.aggregates.loan_application import (
     LoanApplicationAggregate,
+    ApplicationState,
     DomainError,
 )
 from ledger.domain.aggregates.agent_session import AgentSessionAggregate
@@ -44,6 +45,8 @@ class SubmitApplicationCommand:
     contact_email: str = ""
     contact_name: str = ""
     application_reference: str = ""
+    correlation_id: str | None = None
+    causation_id: str | None = None
 
 
 @dataclass
@@ -56,6 +59,8 @@ class StartAgentSessionCommand:
     langgraph_graph_version: str = "1.0"
     context_source: str = "event_store"
     context_token_count: int = 0
+    correlation_id: str | None = None
+    causation_id: str | None = None
 
 
 @dataclass
@@ -70,6 +75,8 @@ class CreditAnalysisCompletedCommand:
     input_data_hash: str = "n/a"
     analysis_duration_ms: int = 0
     regulatory_basis: list = field(default_factory=list)
+    correlation_id: str | None = None
+    causation_id: str | None = None
 
 
 @dataclass
@@ -84,6 +91,8 @@ class FraudScreeningCompletedCommand:
     screening_model_version: str
     input_data_hash: str = "n/a"
     anomalies_found: int = 0
+    correlation_id: str | None = None
+    causation_id: str | None = None
 
 
 @dataclass
@@ -99,6 +108,8 @@ class ComplianceCheckCommand:
     is_hard_block: bool = False
     failure_reason: str = ""
     remediation_available: bool = False
+    correlation_id: str | None = None
+    causation_id: str | None = None
 
 
 @dataclass
@@ -114,6 +125,8 @@ class GenerateDecisionCommand:
     key_risks: list = field(default_factory=list)
     model_versions: dict = field(default_factory=dict)
     required_compliance_rules: set = field(default_factory=set)
+    correlation_id: str | None = None
+    causation_id: str | None = None
 
 
 @dataclass
@@ -124,6 +137,8 @@ class HumanReviewCompletedCommand:
     original_recommendation: str
     final_decision: str      # "APPROVED" | "DECLINED"
     override_reason: str | None = None
+    correlation_id: str | None = None
+    causation_id: str | None = None
 
 
 # ── Handlers ─────────────────────────────────────────────────────────────────
@@ -136,12 +151,8 @@ async def handle_submit_application(
     Raises DomainError if the application already exists.
     """
     stream_id = f"loan-{cmd.application_id}"
-    current = await store.stream_version(stream_id)
-    if current != -1:
-        raise DomainError(
-            f"Application {cmd.application_id!r} already exists "
-            f"(stream version={current})."
-        )
+    loan_agg = await LoanApplicationAggregate.load(store, cmd.application_id)
+    loan_agg.assert_is_new()
 
     event = {
         "event_type": "ApplicationSubmitted",
@@ -159,7 +170,10 @@ async def handle_submit_application(
             "submitted_at": _now(),
         },
     }
-    positions = await store.append(stream_id, [event], expected_version=-1)
+    positions = await store.append(
+        stream_id, [event], expected_version=loan_agg.version,
+        causation_id=cmd.causation_id, correlation_id=cmd.correlation_id,
+    )
     return {"stream_id": stream_id, "version": positions[-1]}
 
 
@@ -209,7 +223,10 @@ async def handle_start_agent_session(
             },
         },
     ]
-    positions = await store.append(stream_id, events, expected_version=-1)
+    positions = await store.append(
+        stream_id, events, expected_version=-1,
+        causation_id=cmd.causation_id, correlation_id=cmd.correlation_id,
+    )
     return {"stream_id": stream_id, "version": positions[-1]}
 
 
@@ -233,6 +250,7 @@ async def handle_credit_analysis_completed(
         store, agent_stream, cmd.agent_id, cmd.session_id
     )
 
+    loan_agg.assert_valid_transition(ApplicationState.CREDIT_ANALYSIS_COMPLETE)  # Rule 1
     loan_agg.assert_credit_analysis_not_locked()        # Rule 3
     agent_agg.assert_context_loaded()                   # Rule 2 (Gas Town)
     agent_agg.assert_model_version_current(cmd.model_version)  # Rule 3
@@ -253,7 +271,8 @@ async def handle_credit_analysis_completed(
         },
     }
     positions = await store.append(
-        loan_stream, [event], expected_version=loan_agg.version
+        loan_stream, [event], expected_version=loan_agg.version,
+        causation_id=cmd.causation_id, correlation_id=cmd.correlation_id,
     )
     return {"stream_id": loan_stream, "version": positions[-1]}
 
@@ -281,6 +300,7 @@ async def handle_fraud_screening_completed(
     agent_agg = await AgentSessionAggregate.load_by_stream(
         store, agent_stream, cmd.agent_id, cmd.session_id
     )
+    loan_agg.assert_valid_transition(ApplicationState.FRAUD_SCREENING_COMPLETE)  # Rule 1
     agent_agg.assert_context_loaded()  # Rule 2 (Gas Town)
 
     event = {
@@ -299,7 +319,8 @@ async def handle_fraud_screening_completed(
         },
     }
     positions = await store.append(
-        loan_stream, [event], expected_version=loan_agg.version
+        loan_stream, [event], expected_version=loan_agg.version,
+        causation_id=cmd.causation_id, correlation_id=cmd.correlation_id,
     )
     return {"stream_id": loan_stream, "version": positions[-1]}
 
@@ -354,7 +375,8 @@ async def handle_compliance_check(
         }
 
     positions = await store.append(
-        compliance_stream, [event], expected_version=compliance_agg.version
+        compliance_stream, [event], expected_version=compliance_agg.version,
+        causation_id=cmd.causation_id, correlation_id=cmd.correlation_id,
     )
     return {"stream_id": compliance_stream, "version": positions[-1]}
 
@@ -376,14 +398,8 @@ async def handle_generate_decision(
     loan_stream = f"loan-{cmd.application_id}"
     loan_agg = await LoanApplicationAggregate.load(store, cmd.application_id)
 
-    if not loan_agg.credit_analysis_done:
-        raise DomainError(
-            "Cannot generate decision: credit analysis has not been completed."
-        )
-    if not loan_agg.fraud_done:
-        raise DomainError(
-            "Cannot generate decision: fraud screening has not been completed."
-        )
+    loan_agg.assert_credit_analysis_done()
+    loan_agg.assert_fraud_done()
 
     if cmd.required_compliance_rules:
         compliance_agg = await ComplianceRecordAggregate.load(store, cmd.application_id)
@@ -422,7 +438,8 @@ async def handle_generate_decision(
         },
     }
     positions = await store.append(
-        loan_stream, [event], expected_version=loan_agg.version
+        loan_stream, [event], expected_version=loan_agg.version,
+        causation_id=cmd.causation_id, correlation_id=cmd.correlation_id,
     )
     return {
         "stream_id": loan_stream,
@@ -463,7 +480,8 @@ async def handle_human_review_completed(
         },
     }
     positions = await store.append(
-        loan_stream, [event], expected_version=loan_agg.version
+        loan_stream, [event], expected_version=loan_agg.version,
+        causation_id=cmd.causation_id, correlation_id=cmd.correlation_id,
     )
     return {
         "stream_id": loan_stream,

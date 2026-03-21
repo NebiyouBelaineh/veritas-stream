@@ -91,6 +91,17 @@ async def test_full_lifecycle_via_mcp_only():
         })
         assert _data(r)["success"] is True, f"start session failed: {_data(r)}"
 
+        # Step 2b: Advance loan state to CREDIT_ANALYSIS_REQUESTED.
+        # No MCP tools exist for document processing; seed events directly.
+        _loan_stream = f"loan-{app_id}"
+        _loan_ver = await store.stream_version(_loan_stream)
+        await store.append(_loan_stream, [
+            {"event_type": "DocumentUploadRequested", "event_version": 1, "payload": {}},
+            {"event_type": "DocumentUploaded", "event_version": 1, "payload": {}},
+            {"event_type": "PackageReadyForAnalysis", "event_version": 1, "payload": {}},
+            {"event_type": "CreditAnalysisRequested", "event_version": 1, "payload": {}},
+        ], expected_version=_loan_ver)
+
         # Step 3: Record credit analysis
         r = await client.call_tool("record_credit_analysis", {
             "application_id": app_id,
@@ -105,6 +116,12 @@ async def test_full_lifecycle_via_mcp_only():
             "rationale": "Excellent credit history, strong cash flow.",
         })
         assert _data(r)["success"] is True, f"credit analysis failed: {_data(r)}"
+
+        # Step 3b: Advance loan state to FRAUD_SCREENING_REQUESTED.
+        _loan_ver = await store.stream_version(_loan_stream)
+        await store.append(_loan_stream, [
+            {"event_type": "FraudScreeningRequested", "event_version": 1, "payload": {}},
+        ], expected_version=_loan_ver)
 
         # Step 4: Start fraud-screening session
         fraud_session = f"sess-fraud-{app_id}"

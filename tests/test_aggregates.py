@@ -345,6 +345,68 @@ async def test_rule6_decision_accepts_known_sessions():
     agg.assert_contributing_sessions_known(["sess-credit", "sess-fraud"])  # must not raise
 
 
+# ── Aggregate version tracking ───────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_aggregate_version_matches_stream_version_after_replay():
+    """
+    After replaying N events, aggregate.version must equal stream_version().
+    Command handlers pass aggregate.version as expected_version to store.append().
+    If the two values diverge, every subsequent append fails with OCC.
+    """
+    store = InMemoryEventStore()
+    app_id = "APEX-VER-001"
+
+    await _seed_loan(store, app_id, [
+        _ev("ApplicationSubmitted", applicant_id="a1", requested_amount_usd=100000,
+            loan_purpose="working_capital"),
+        _ev("DocumentUploadRequested"),
+        _ev("DocumentUploaded"),
+    ])
+
+    agg = await LoanApplicationAggregate.load(store, app_id)
+    stream_ver = await store.stream_version(f"loan-{app_id}")
+
+    assert agg.version == stream_ver, (
+        f"aggregate.version ({agg.version}) != stream_version ({stream_ver}). "
+        "Handlers will pass the wrong expected_version on the next append."
+    )
+
+
+# ── Agent session model version guard ─────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_agent_session_model_version_guard_raises_on_mismatch():
+    """
+    Rule 3: assert_model_version_current() raises DomainError when the model
+    version in a subsequent command differs from what the session declared at
+    AgentSessionStarted. Prevents silent model drift within a single session.
+    """
+    store = InMemoryEventStore()
+    session_id = "sess-mvg-001"
+    agent_id = "credit_analysis"
+
+    await _seed_agent(store, agent_id, session_id, [
+        _ev("AgentSessionStarted", session_id=session_id, agent_type=agent_id,
+            agent_id=agent_id, application_id="APEX-MVG",
+            model_version="v2.3",
+            langgraph_graph_version="1.0", context_source="event_store",
+            context_token_count=0),
+        _ev("AgentInputValidated", session_id=session_id, agent_type=agent_id,
+            application_id="APEX-MVG", inputs_validated=[], validation_duration_ms=5),
+    ])
+
+    agg = await AgentSessionAggregate.load(store, agent_id, session_id)
+    assert agg.model_version == "v2.3"
+
+    # Same version — must not raise
+    agg.assert_model_version_current("v2.3")
+
+    # Different version — must raise DomainError
+    with pytest.raises(DomainError, match="version"):
+        agg.assert_model_version_current("v3.0")
+
+
 # ── Aggregate load integration ────────────────────────────────────────────────
 
 @pytest.mark.asyncio

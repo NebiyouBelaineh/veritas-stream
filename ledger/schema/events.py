@@ -179,6 +179,40 @@ class BaseEvent(BaseModel):
         }
 
 
+class StoredEvent(BaseModel):
+    """Store-assigned envelope wrapping a persisted event.
+
+    Distinct from BaseEvent (domain-owned fields). StoredEvent adds all
+    fields assigned by the event store at write time: position within the
+    stream, global ordering position, the store-generated timestamp, and
+    the metadata dict carrying correlation/causation IDs.
+    """
+    event_id: UUID
+    stream_id: str
+    stream_position: int
+    global_position: int
+    event_type: str
+    event_version: int
+    payload: dict
+    metadata: dict
+    recorded_at: datetime
+
+    @classmethod
+    def from_row(cls, row: dict) -> "StoredEvent":
+        """Construct from a raw asyncpg row or equivalent dict."""
+        return cls(
+            event_id=row["event_id"],
+            stream_id=row["stream_id"],
+            stream_position=row["stream_position"],
+            global_position=row["global_position"],
+            event_type=row["event_type"],
+            event_version=row["event_version"],
+            payload=dict(row["payload"]),
+            metadata=dict(row.get("metadata") or {}),
+            recorded_at=row["recorded_at"],
+        )
+
+
 # ─── AGGREGATE 1: LOAN APPLICATION ───────────────────────────────────────────
 # stream: "loan-{application_id}"
 

@@ -234,3 +234,75 @@ async def test_outbox_schema(conn):
     cols = await _columns(conn, "outbox")
     assert {"id", "event_id", "destination", "payload",
             "created_at", "published_at", "attempts"}.issubset(cols)
+
+
+# ─── REQUIREMENT: recorded_at uses clock_timestamp(), not NOW() ──────────────
+
+@pytest.mark.asyncio
+async def test_recorded_at_column_default_uses_clock_timestamp(conn):
+    """
+    recorded_at must default to clock_timestamp(), not NOW().
+    NOW() freezes at transaction start: every event in a single transaction
+    gets the same timestamp. clock_timestamp() gives each row its actual
+    write time, which ProjectionDaemon and time-range queries depend on.
+    """
+    row = await conn.fetchrow(
+        """
+        SELECT column_default
+        FROM information_schema.columns
+        WHERE table_name  = 'events'
+          AND column_name = 'recorded_at'
+          AND table_schema = 'public'
+        """
+    )
+    assert row is not None, "recorded_at column not found on events table"
+    assert "clock_timestamp" in (row["column_default"] or ""), (
+        f"recorded_at default must use clock_timestamp(), got: {row['column_default']!r}"
+    )
+
+
+# ─── REQUIREMENT: event_streams supports stream archival ─────────────────────
+
+@pytest.mark.asyncio
+async def test_event_streams_has_archived_at_column(conn):
+    """
+    event_streams.archived_at enables stream lifecycle management.
+    EventStore.archive_stream() sets this column; StreamMetadata.is_archived
+    is derived from it. Without this column the archive feature cannot exist.
+    """
+    cols = await _columns(conn, "event_streams")
+    assert "archived_at" in cols, (
+        "event_streams must have an archived_at column for stream archival support"
+    )
+
+
+# ─── REQUIREMENT: Indexes cover all four read patterns ───────────────────────
+
+@pytest.mark.asyncio
+async def test_indexes_cover_four_read_patterns(conn):
+    """
+    The events table must be indexed for all four read patterns the store serves:
+      1. Stream-ordered reads     — filters by stream_id, orders by stream_position
+      2. Global position reads    — orders by global_position (ProjectionDaemon)
+      3. Event type filtering     — WHERE event_type = $1 (load_all filters)
+      4. Time-range queries       — WHERE recorded_at BETWEEN ... (audit, compliance)
+    Missing any index means one of these patterns degrades to a full table scan.
+    """
+    rows = await conn.fetch(
+        "SELECT indexdef FROM pg_indexes "
+        "WHERE tablename = 'events' AND schemaname = 'public'"
+    )
+    index_defs = " ".join(r["indexdef"].lower() for r in rows)
+
+    assert "stream_id" in index_defs, (
+        "No index on stream_id — stream-ordered reads will full-scan"
+    )
+    assert "global_position" in index_defs, (
+        "No index on global_position — ProjectionDaemon checkpoint resume will full-scan"
+    )
+    assert "event_type" in index_defs, (
+        "No index on event_type — load_all(event_type=...) filters will full-scan"
+    )
+    assert "recorded_at" in index_defs, (
+        "No index on recorded_at — time-range audit queries will full-scan"
+    )

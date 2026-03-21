@@ -88,6 +88,7 @@ class EventStore:
         events: list[dict],
         expected_version: int,    # -1=new stream, 0+=expected current
         causation_id: str | None = None,
+        correlation_id: str | None = None,
         metadata: dict | None = None,
     ) -> list[int]:
         """Appends events atomically with OCC. Returns list of positions assigned."""
@@ -120,6 +121,7 @@ class EventStore:
                 positions = []
                 meta = {**(metadata or {})}
                 if causation_id: meta["causation_id"] = causation_id
+                if correlation_id: meta["correlation_id"] = correlation_id
                 for i, event in enumerate(events):
                     pos = base + 1 + i
                     event_id = await conn.fetchval(
@@ -435,6 +437,7 @@ class InMemoryEventStore:
         events: list[dict],
         expected_version: int,
         causation_id: str | None = None,
+        correlation_id: str | None = None,
         metadata: dict | None = None,
     ) -> list[int]:
         async with self._locks[stream_id]:
@@ -453,6 +456,8 @@ class InMemoryEventStore:
             meta = {**(metadata or {})}
             if causation_id:
                 meta["causation_id"] = causation_id
+            if correlation_id:
+                meta["correlation_id"] = correlation_id
 
             for i, event in enumerate(events):
                 pos = current + 1 + i

@@ -68,6 +68,15 @@ async def _run_full_lifecycle(
             agent_id=agent_id, application_id=app_id, model_version=model_version,
         ), store,
     )
+    # Advance loan state through document processing to CREDIT_ANALYSIS_REQUESTED.
+    _loan_stream = f"loan-{app_id}"
+    _loan_ver = await store.stream_version(_loan_stream)
+    await store.append(_loan_stream, [
+        {"event_type": "DocumentUploadRequested", "event_version": 1, "payload": {}},
+        {"event_type": "DocumentUploaded", "event_version": 1, "payload": {}},
+        {"event_type": "PackageReadyForAnalysis", "event_version": 1, "payload": {}},
+        {"event_type": "CreditAnalysisRequested", "event_version": 1, "payload": {}},
+    ], expected_version=_loan_ver)
     await handle_credit_analysis_completed(
         CreditAnalysisCompletedCommand(
             application_id=app_id, session_id=session_id,
@@ -83,6 +92,11 @@ async def _run_full_lifecycle(
             agent_id="fraud_detection", application_id=app_id, model_version="v1.5",
         ), store,
     )
+    # Advance loan state to FRAUD_SCREENING_REQUESTED.
+    _loan_ver = await store.stream_version(_loan_stream)
+    await store.append(_loan_stream, [
+        {"event_type": "FraudScreeningRequested", "event_version": 1, "payload": {}},
+    ], expected_version=_loan_ver)
     await handle_fraud_screening_completed(
         FraudScreeningCompletedCommand(
             application_id=app_id, session_id=fraud_session_id,
