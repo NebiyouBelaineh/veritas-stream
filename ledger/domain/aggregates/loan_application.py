@@ -94,91 +94,115 @@ class LoanApplicationAggregate:
         return agg
 
     def apply(self, event: dict) -> None:
-        """Apply one stored event to update aggregate state."""
-        et = event.get("event_type")
-        p = event.get("payload", {})
+        """
+        Dispatch one stored event to its per-type handler method.
+
+        Precondition: event dict contains 'event_type' and 'payload'.
+        Guarantee: self.version increments; matching _on_<event_type> called if it exists.
+        Unknown event types are silently ignored (forward compatibility).
+        """
         self.version += 1
+        handler = getattr(self, f"_on_{event.get('event_type', '')}", None)
+        if handler:
+            handler(event.get("payload", {}))
 
-        if et == "ApplicationSubmitted":
-            self.state = ApplicationState.SUBMITTED
-            self.applicant_id = p.get("applicant_id")
-            self.requested_amount_usd = p.get("requested_amount_usd")
-            self.loan_purpose = p.get("loan_purpose")
+    # ── Per-event handlers ────────────────────────────────────────────────────
 
-        elif et == "DocumentUploadRequested":
-            self.state = ApplicationState.DOCUMENTS_PENDING
+    def _on_ApplicationSubmitted(self, p: dict) -> None:
+        # Transition: NEW → SUBMITTED. Sets applicant identity and loan terms.
+        self.state = ApplicationState.SUBMITTED
+        self.applicant_id = p.get("applicant_id")
+        self.requested_amount_usd = p.get("requested_amount_usd")
+        self.loan_purpose = p.get("loan_purpose")
 
-        elif et == "DocumentUploaded":
-            self.state = ApplicationState.DOCUMENTS_UPLOADED
+    def _on_DocumentUploadRequested(self, p: dict) -> None:
+        # Transition: SUBMITTED → DOCUMENTS_PENDING.
+        self.state = ApplicationState.DOCUMENTS_PENDING
 
-        elif et == "PackageReadyForAnalysis":
-            self.state = ApplicationState.DOCUMENTS_PROCESSED
+    def _on_DocumentUploaded(self, p: dict) -> None:
+        # Transition: DOCUMENTS_PENDING → DOCUMENTS_UPLOADED.
+        self.state = ApplicationState.DOCUMENTS_UPLOADED
 
-        elif et == "CreditAnalysisRequested":
-            self.state = ApplicationState.CREDIT_ANALYSIS_REQUESTED
+    def _on_PackageReadyForAnalysis(self, p: dict) -> None:
+        # Transition: DOCUMENTS_UPLOADED → DOCUMENTS_PROCESSED.
+        self.state = ApplicationState.DOCUMENTS_PROCESSED
 
-        elif et == "CreditAnalysisCompleted":
-            self.state = ApplicationState.CREDIT_ANALYSIS_COMPLETE
-            self.credit_analysis_done = True
+    def _on_CreditAnalysisRequested(self, p: dict) -> None:
+        # Transition: DOCUMENTS_PROCESSED → CREDIT_ANALYSIS_REQUESTED.
+        self.state = ApplicationState.CREDIT_ANALYSIS_REQUESTED
 
-        elif et == "FraudScreeningRequested":
-            self.state = ApplicationState.FRAUD_SCREENING_REQUESTED
+    def _on_CreditAnalysisCompleted(self, p: dict) -> None:
+        # Transition: CREDIT_ANALYSIS_REQUESTED → CREDIT_ANALYSIS_COMPLETE. Locks credit analysis.
+        self.state = ApplicationState.CREDIT_ANALYSIS_COMPLETE
+        self.credit_analysis_done = True
 
-        elif et == "FraudScreeningCompleted":
-            self.state = ApplicationState.FRAUD_SCREENING_COMPLETE
-            self.fraud_done = True
+    def _on_FraudScreeningRequested(self, p: dict) -> None:
+        # Transition: CREDIT_ANALYSIS_COMPLETE → FRAUD_SCREENING_REQUESTED.
+        self.state = ApplicationState.FRAUD_SCREENING_REQUESTED
 
-        elif et == "ComplianceCheckRequested":
-            self.state = ApplicationState.COMPLIANCE_CHECK_REQUESTED
+    def _on_FraudScreeningCompleted(self, p: dict) -> None:
+        # Transition: FRAUD_SCREENING_REQUESTED → FRAUD_SCREENING_COMPLETE.
+        self.state = ApplicationState.FRAUD_SCREENING_COMPLETE
+        self.fraud_done = True
 
-        elif et == "ComplianceCheckCompleted":
-            verdict = p.get("overall_verdict", "BLOCKED")
-            self.compliance_verdict = verdict
-            if p.get("has_hard_block", False) or verdict == "BLOCKED":
-                self.state = ApplicationState.DECLINED_COMPLIANCE
-            else:
-                self.state = ApplicationState.COMPLIANCE_CHECK_COMPLETE
+    def _on_ComplianceCheckRequested(self, p: dict) -> None:
+        # Transition: FRAUD_SCREENING_COMPLETE → COMPLIANCE_CHECK_REQUESTED.
+        self.state = ApplicationState.COMPLIANCE_CHECK_REQUESTED
 
-        elif et == "DecisionRequested":
-            pass  # Intermediate event — state unchanged; handler manages flow
+    def _on_ComplianceCheckCompleted(self, p: dict) -> None:
+        # Transition: COMPLIANCE_CHECK_REQUESTED → COMPLIANCE_CHECK_COMPLETE or DECLINED_COMPLIANCE.
+        verdict = p.get("overall_verdict", "BLOCKED")
+        self.compliance_verdict = verdict
+        if p.get("has_hard_block", False) or verdict == "BLOCKED":
+            self.state = ApplicationState.DECLINED_COMPLIANCE
+        else:
+            self.state = ApplicationState.COMPLIANCE_CHECK_COMPLETE
 
-        elif et == "DecisionGenerated":
-            confidence = p.get("confidence", 0.0)
-            recommendation = p.get("recommendation", "REFER")
-            # Rule 4: confidence floor
-            if confidence < 0.6:
-                recommendation = "REFER"
-            self.recommendation = recommendation
-            self.confidence = confidence
-            # Track contributing sessions for Rule 6
-            for sid in p.get("contributing_sessions", []):
-                self.known_sessions.add(sid)
-            if recommendation in ("REFER", "MANUAL_REVIEW"):
-                self.state = ApplicationState.PENDING_HUMAN_REVIEW
-            else:
-                self.state = ApplicationState.PENDING_DECISION
+    def _on_DecisionRequested(self, p: dict) -> None:
+        # Intermediate event — state unchanged; orchestrator manages flow.
+        pass
 
-        elif et == "HumanReviewRequested":
+    def _on_DecisionGenerated(self, p: dict) -> None:
+        # Transition: COMPLIANCE_CHECK_COMPLETE → PENDING_DECISION or PENDING_HUMAN_REVIEW.
+        # Rule 4: confidence floor forces REFER below 0.6.
+        confidence = p.get("confidence", 0.0)
+        recommendation = p.get("recommendation", "REFER")
+        if confidence < 0.6:
+            recommendation = "REFER"
+        self.recommendation = recommendation
+        self.confidence = confidence
+        for sid in p.get("contributing_sessions", []):
+            self.known_sessions.add(sid)
+        if recommendation in ("REFER", "MANUAL_REVIEW"):
             self.state = ApplicationState.PENDING_HUMAN_REVIEW
+        else:
+            self.state = ApplicationState.PENDING_DECISION
 
-        elif et == "HumanReviewCompleted":
-            final = p.get("final_decision", "DECLINED")
-            if final == "APPROVED":
-                self.state = ApplicationState.APPROVED
-            else:
-                self.state = ApplicationState.DECLINED
+    def _on_HumanReviewRequested(self, p: dict) -> None:
+        # Transition: PENDING_DECISION → PENDING_HUMAN_REVIEW.
+        self.state = ApplicationState.PENDING_HUMAN_REVIEW
 
-        elif et == "ApplicationApproved":
+    def _on_HumanReviewCompleted(self, p: dict) -> None:
+        # Transition: PENDING_HUMAN_REVIEW → APPROVED or DECLINED.
+        final = p.get("final_decision", "DECLINED")
+        if final == "APPROVED":
             self.state = ApplicationState.APPROVED
-
-        elif et == "ApplicationDeclined":
+        else:
             self.state = ApplicationState.DECLINED
 
-        elif et == "AgentOutputWritten":
-            # Track session IDs that have contributed to this application
-            session_id = p.get("session_id")
-            if session_id:
-                self.known_sessions.add(session_id)
+    def _on_ApplicationApproved(self, p: dict) -> None:
+        # Transition: PENDING_DECISION → APPROVED.
+        self.state = ApplicationState.APPROVED
+
+    def _on_ApplicationDeclined(self, p: dict) -> None:
+        # Transition: PENDING_DECISION → DECLINED.
+        self.state = ApplicationState.DECLINED
+
+    def _on_AgentOutputWritten(self, p: dict) -> None:
+        # Records contributing session IDs for Rule 6 validation.
+        session_id = p.get("session_id")
+        if session_id:
+            self.known_sessions.add(session_id)
 
     # ── Business rule assertions ──────────────────────────────────────────────
 
