@@ -114,7 +114,7 @@ class EventStore:
                         " VALUES($1, $2, 0)",
                         stream_id, stream_id.split("-")[0])
 
-                # 5. Insert each event
+                # 5. Insert each event + outbox row in the same transaction
                 # base is 0 for new streams (expected_version=-1) so first pos = 1
                 base = max(0, expected_version)
                 positions = []
@@ -122,15 +122,23 @@ class EventStore:
                 if causation_id: meta["causation_id"] = causation_id
                 for i, event in enumerate(events):
                     pos = base + 1 + i
-                    await conn.execute(
+                    event_id = await conn.fetchval(
                         "INSERT INTO events(stream_id, stream_position, event_type,"
                         " event_version, payload, metadata, recorded_at)"
-                        " VALUES($1,$2,$3,$4,$5::jsonb,$6::jsonb,$7)",
+                        " VALUES($1,$2,$3,$4,$5::jsonb,$6::jsonb,$7)"
+                        " RETURNING event_id",
                         stream_id, pos,
                         event["event_type"], event["event_version"],
                         json.dumps(event["payload"]),
                         json.dumps(meta),
                         datetime.now(timezone.utc))
+                    # Outbox row in the same transaction — guarantees at-least-once delivery
+                    # even if the process crashes before the outbox relay publishes the event.
+                    await conn.execute(
+                        "INSERT INTO outbox(event_id, destination, payload)"
+                        " VALUES($1, $2, $3::jsonb)",
+                        event_id, event["event_type"],
+                        json.dumps(event["payload"]))
                     positions.append(pos)
 
                 # 6. Update stream version (= total event count = last position)
