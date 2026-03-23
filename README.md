@@ -1,4 +1,4 @@
-# VeritasStream — The Ledger
+# VeritasStream: The Ledger
 
 **Event-sourcing infrastructure for Apex Financial Services' AI-driven loan processing platform.**
 
@@ -66,6 +66,11 @@ DATABASE_URL=postgresql://postgres:apex@localhost:5433/apex_ledger \
 
 ### 5. Run the MCP server
 
+The server is started by running `scripts/run_pipeline.py` or by embedding the
+server factory in your own script. It binds to `0.0.0.0:8000` (stdio transport
+by default when invoked via FastMCP `mcp.run()`; HTTP transport available via
+`mcp.run(transport="http", port=8000)`).
+
 ```python
 from ledger.event_store import EventStore
 from ledger.projections.application_summary import ApplicationSummaryProjection
@@ -88,9 +93,39 @@ mcp = create_mcp_server(store, daemon, {
 mcp.run()
 ```
 
+To verify the server is accepting connections (HTTP transport):
+
+```bash
+curl http://localhost:8000/health
+# Expected: {"status":"ok"}
+```
+
+### 6. Query MCP resources
+
+Resources are read-side projections. Query them by URI once the server is running:
+
+```python
+from fastmcp import Client
+
+async with Client("http://localhost:8000") as client:
+    # Application summary (current state)
+    summary = await client.read_resource("ledger://applications/APEX-0001")
+
+    # Compliance state at a specific point in time
+    compliance = await client.read_resource(
+        "ledger://applications/APEX-0001/compliance/2026-03-01T10:00:00"
+    )
+
+    # Full audit trail (stream replay)
+    trail = await client.read_resource("ledger://applications/APEX-0001/audit-trail")
+
+    # Projection daemon health and lag per projection (milliseconds)
+    health = await client.read_resource("ledger://ledger/health")
+```
+
 ---
 
-## Event Flow — Full Loan Lifecycle
+## Event Flow: Full Loan Lifecycle
 
 ```mermaid
 sequenceDiagram
@@ -151,23 +186,26 @@ stateDiagram-v2
 ## Test Suite
 
 ```bash
-# Branch 1 — Schema (requires PostgreSQL)
+# Branch 1: Schema (requires PostgreSQL)
 pytest tests/test_schema.py -v
 
-# Branch 2 — Domain aggregates + business rules
+# Branch 2: Domain aggregates + business rules
 pytest tests/test_aggregates.py -v
 
-# Branch 3 — Command handlers + lifecycle
+# Branch 3: Command handlers + lifecycle
 pytest tests/test_command_handlers.py -v
 
-# Branch 4 — Projections + daemon
+# Branch 4: Projections + daemon
 pytest tests/test_projections.py -v
 
-# Branch 5 — Upcasting + integrity
+# Branch 5: Upcasting + integrity
 pytest tests/test_upcasting.py tests/test_integrity.py -v
 
-# Branch 6 — MCP integration
+# Branch 6: MCP integration
 pytest tests/test_mcp_integration.py -v
+
+# Required submission test files
+pytest tests/test_concurrency.py tests/test_gas_town.py tests/test_mcp_lifecycle.py -v
 
 # All in-memory tests at once
 pytest tests/ --ignore=tests/test_schema.py --ignore=tests/test_event_store.py -v
@@ -184,12 +222,15 @@ pytest tests/ --ignore=tests/test_schema.py --ignore=tests/test_event_store.py -
 | 5 | `test_upcasting.py` | Mandatory TRP immutability, null-over-fabrication for unknown fields |
 | 5 | `test_integrity.py` | Tamper detection, Gas Town crash recovery, NEEDS_RECONCILIATION on partial state |
 | 6 | `test_mcp_integration.py` | Full lifecycle via MCP only, structured error types, projection-backed resources, health watchdog |
+| Submission | `test_concurrency.py` | OCC double-decision: exactly one winner, one OptimisticConcurrencyError |
+| Submission | `test_gas_town.py` | Agent crash recovery, partial decision flagged as NEEDS_RECONCILIATION |
+| Submission | `test_mcp_lifecycle.py` | Full loan lifecycle driven exclusively via MCP tool calls |
 
 ---
 
 ## MCP Tools and Resources
 
-### Tools (commands — write side)
+### Tools (commands, write side)
 
 | Tool | Description |
 |------|-------------|
@@ -202,7 +243,7 @@ pytest tests/ --ignore=tests/test_schema.py --ignore=tests/test_event_store.py -
 | `record_human_review` | Record human reviewer outcome |
 | `run_integrity_check` | Run cryptographic audit hash-chain check |
 
-### Resources (projections — read side)
+### Resources (projections, read side)
 
 | Resource URI | Description |
 |--------------|-------------|
@@ -252,7 +293,14 @@ veritas-stream/
 │   ├── test_projections.py
 │   ├── test_upcasting.py
 │   ├── test_integrity.py
-│   └── test_mcp_integration.py
+│   ├── test_mcp_integration.py
+│   ├── test_concurrency.py         # OCC double-decision (submission requirement)
+│   ├── test_gas_town.py            # crash recovery (submission requirement)
+│   └── test_mcp_lifecycle.py       # MCP-only lifecycle (submission requirement)
+├── what_if/
+│   └── projector.py                # run_what_if(): counterfactual projection (Phase 6)
+├── regulatory/
+│   └── package.py                  # generate_regulatory_package() (Phase 6)
 ├── schema.sql                      # PostgreSQL DDL (events, event_streams, projections, outbox)
 ├── docker-compose.yml              # PostgreSQL 16 on port 5433
 └── pyproject.toml
