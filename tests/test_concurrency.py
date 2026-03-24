@@ -25,15 +25,15 @@ async def test_concurrent_double_append_exactly_one_succeeds():
     """
     store = InMemoryEventStore()
 
-    # Setup: stream at version 2 (three pre-existing events, 0-based versioning)
+    # Setup: stream at version 3 (three pre-existing events, 1-based versioning)
     await store.append("loan-occ-test", [_ev("E1")], expected_version=-1)
-    await store.append("loan-occ-test", [_ev("E2")], expected_version=0)
-    await store.append("loan-occ-test", [_ev("E3")], expected_version=1)
+    await store.append("loan-occ-test", [_ev("E2")], expected_version=1)
+    await store.append("loan-occ-test", [_ev("E3")], expected_version=2)
 
-    # Two concurrent appends at expected_version=2 (the race condition)
+    # Two concurrent appends at expected_version=3 (the race condition)
     results = await asyncio.gather(
-        store.append("loan-occ-test", [_ev("A")], expected_version=2),
-        store.append("loan-occ-test", [_ev("B")], expected_version=2),
+        store.append("loan-occ-test", [_ev("A")], expected_version=3),
+        store.append("loan-occ-test", [_ev("B")], expected_version=3),
         return_exceptions=True,
     )
 
@@ -44,7 +44,7 @@ async def test_concurrent_double_append_exactly_one_succeeds():
         f"Expected exactly 1 success, got {len(successes)}: {results}"
     assert len(errors) == 1, \
         f"Expected exactly 1 OptimisticConcurrencyError, got {len(errors)}: {results}"
-    assert successes[0] == [3], \
-        f"Winner's event must be at stream_position 3, got {successes[0]}"
-    assert await store.stream_version("loan-occ-test") == 3, \
+    assert successes[0] == [4], \
+        f"Winner's event must be at stream_position 4, got {successes[0]}"
+    assert await store.stream_version("loan-occ-test") == 4, \
         "Stream must have exactly 4 events (3 pre-existing + 1 winner)"

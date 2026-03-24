@@ -262,9 +262,9 @@ async def test_double_decision_exactly_one_succeeds():
         store,
     )
 
-    # Loan stream is now at version=0 (ApplicationSubmitted).
+    # Loan stream is now at version=1 (ApplicationSubmitted).
     loan_stream = f"loan-{app_id}"
-    expected_version = await store.stream_version(loan_stream)  # 0
+    expected_version = await store.stream_version(loan_stream)  # 1
 
     credit_event = {
         "event_type": "CreditAnalysisCompleted",
@@ -305,7 +305,7 @@ async def test_double_decision_exactly_one_succeeds():
 
     # (b) Winner's event is at the expected stream position
     winner_positions = results[0]
-    assert winner_positions == [1], f"Winner should be at position 1, got {winner_positions}"
+    assert winner_positions == [expected_version + 1], f"Winner should be at position {expected_version + 1}, got {winner_positions}"
 
     # (c) Loan stream has exactly 2 events (ApplicationSubmitted + one CreditAnalysisCompleted)
     events = await store.load_stream(loan_stream)

@@ -172,7 +172,7 @@ async def test_gas_town_agent_reconstructs_after_crash():
     assert "load_financial_facts" in ctx.nodes_completed
     assert "llm_analysis" in ctx.nodes_completed
     assert ctx.context_text, "context_text must be non-empty"
-    assert ctx.last_position == 4, "last_position must be the final stream_position"
+    assert ctx.last_position == 5, "last_position must be the final stream_position (1-based)"
 
     # Session started but not completed → NEEDS_RECONCILIATION
     assert ctx.health_status == NEEDS_RECONCILIATION, (
