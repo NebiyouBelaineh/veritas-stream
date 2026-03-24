@@ -116,7 +116,7 @@ class CreditAnalysisAgent(BaseApexAgent):
 
     # ── NODE 1: VALIDATE INPUTS ───────────────────────────────────────────────
     async def _node_validate_inputs(self, state: CreditState) -> CreditState:
-        t = time.time()
+        t = time.perf_counter()
         app_id = state["application_id"]
         errors = []
 
@@ -139,7 +139,7 @@ class CreditAnalysisAgent(BaseApexAgent):
         # if not pkg.is_ready_for_analysis:
         #     errors.append("Document package not ready")
 
-        ms = int((time.time() - t) * 1000)
+        ms = int((time.perf_counter() - t) * 1000)
         if errors:
             await self._record_input_failed([], errors)
             raise ValueError(f"Input validation failed: {errors}")
@@ -157,7 +157,7 @@ class CreditAnalysisAgent(BaseApexAgent):
 
     # ── NODE 2: OPEN CREDIT RECORD ────────────────────────────────────────────
     async def _node_open_credit_record(self, state: CreditState) -> CreditState:
-        t = time.time()
+        t = time.perf_counter()
         app_id = state["application_id"]
         credit_stream = f"credit-{app_id}"
 
@@ -170,7 +170,7 @@ class CreditAnalysisAgent(BaseApexAgent):
         # New stream — expected_version = -1
         await self.store.append(credit_stream, [event], expected_version=-1)
 
-        ms = int((time.time() - t) * 1000)
+        ms = int((time.perf_counter() - t) * 1000)
         await self._record_node_execution(
             "open_credit_record",
             ["application_id", "applicant_id"],
@@ -181,7 +181,7 @@ class CreditAnalysisAgent(BaseApexAgent):
 
     # ── NODE 3: LOAD APPLICANT REGISTRY ──────────────────────────────────────
     async def _node_load_registry(self, state: CreditState) -> CreditState:
-        t = time.time()
+        t = time.perf_counter()
         applicant_id = state["applicant_id"]
 
         # Query Applicant Registry (read-only external database)
@@ -199,7 +199,7 @@ class CreditAnalysisAgent(BaseApexAgent):
         flags:      list[dict] = []
         loans:      list[dict] = []
 
-        ms = int((time.time() - t) * 1000)
+        ms = int((time.perf_counter() - t) * 1000)
         await self._record_tool_call(
             "query_applicant_registry",
             f"company_id={applicant_id} tables=[companies,financial_history,compliance_flags,loan_relationships]",
@@ -238,7 +238,7 @@ class CreditAnalysisAgent(BaseApexAgent):
 
     # ── NODE 4: LOAD EXTRACTED FACTS ──────────────────────────────────────────
     async def _node_load_facts(self, state: CreditState) -> CreditState:
-        t = time.time()
+        t = time.perf_counter()
         app_id = state["application_id"]
 
         # Load ExtractionCompleted events from document package stream
@@ -273,7 +273,7 @@ class CreditAnalysisAgent(BaseApexAgent):
                 for f in ev["payload"].get("critical_missing_fields", [])
             ])
 
-        ms = int((time.time() - t) * 1000)
+        ms = int((time.perf_counter() - t) * 1000)
         await self._record_tool_call(
             "load_event_store_stream",
             f"stream_id=docpkg-{app_id} filter=ExtractionCompleted",
@@ -316,7 +316,7 @@ class CreditAnalysisAgent(BaseApexAgent):
 
     # ── NODE 5: ANALYZE CREDIT RISK (LLM) ─────────────────────────────────────
     async def _node_analyze(self, state: CreditState) -> CreditState:
-        t = time.time()
+        t = time.perf_counter()
         hist      = state.get("historical_financials") or []
         facts     = state.get("extracted_facts") or {}
         flags     = state.get("compliance_flags") or []
@@ -394,7 +394,7 @@ Provide your analysis as JSON."""
                 "policy_overrides_applied": ["ANALYSIS_FALLBACK"],
             }
 
-        ms = int((time.time() - t) * 1000)
+        ms = int((time.perf_counter() - t) * 1000)
         await self._record_node_execution(
             "analyze_credit_risk",
             ["historical_financials", "extracted_facts", "company_profile", "loan_request"],
@@ -405,7 +405,7 @@ Provide your analysis as JSON."""
 
     # ── NODE 6: APPLY POLICY CONSTRAINTS (deterministic) ─────────────────────
     async def _node_policy(self, state: CreditState) -> CreditState:
-        t = time.time()
+        t = time.perf_counter()
         d        = dict(state["credit_decision"])
         hist     = state.get("historical_financials") or []
         req      = state.get("requested_amount_usd") or 0
@@ -436,7 +436,7 @@ Provide your analysis as JSON."""
         if viols:
             d["policy_overrides_applied"] = d.get("policy_overrides_applied", []) + viols
 
-        ms = int((time.time() - t) * 1000)
+        ms = int((time.perf_counter() - t) * 1000)
         await self._record_node_execution(
             "apply_policy_constraints",
             ["credit_decision", "historical_financials", "loan_history", "compliance_flags"],
@@ -447,7 +447,7 @@ Provide your analysis as JSON."""
 
     # ── NODE 7: WRITE OUTPUT ──────────────────────────────────────────────────
     async def _node_write_output(self, state: CreditState) -> CreditState:
-        t = time.time()
+        t = time.perf_counter()
         app_id = state["application_id"]
         d      = state["credit_decision"]
 
@@ -467,7 +467,7 @@ Provide your analysis as JSON."""
             model_version=self.model,
             model_deployment_id=f"dep-{uuid4().hex[:8]}",
             input_data_hash=self._sha(state),
-            analysis_duration_ms=int((time.time() - self._t0) * 1000),
+            analysis_duration_ms=int((time.perf_counter() - self._t0) * 1000),
             completed_at=datetime.now(),
         ).to_store_dict()
 
@@ -497,7 +497,7 @@ Provide your analysis as JSON."""
             f"{d['confidence']:.0%} confidence. Fraud screening triggered.",
         )
 
-        ms = int((time.time() - t) * 1000)
+        ms = int((time.perf_counter() - t) * 1000)
         await self._record_node_execution(
             "write_output", ["credit_decision"], ["events_written"], ms
         )

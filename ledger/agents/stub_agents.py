@@ -108,7 +108,7 @@ class DocumentProcessingAgent(BaseApexAgent):
         )
 
     async def _node_validate_inputs(self, state: DocProcState) -> DocProcState:
-        t = time.time()
+        t = time.perf_counter()
         app_id = state["application_id"]
         errors = []
 
@@ -149,7 +149,7 @@ class DocumentProcessingAgent(BaseApexAgent):
             await self._record_input_failed(missing, errors)
             raise ValueError(f"Input validation failed: missing documents {missing}")
 
-        ms = int((time.time() - t) * 1000)
+        ms = int((time.perf_counter() - t) * 1000)
         await self._record_input_validated(
             ["application_id", "document_ids", "file_paths"], ms
         )
@@ -168,15 +168,15 @@ class DocumentProcessingAgent(BaseApexAgent):
         }
 
     async def _node_validate_formats(self, state: DocProcState) -> DocProcState:
-        t = time.time()
+        t = time.perf_counter()
         app_id = state["application_id"]
         doc_paths = state.get("document_paths") or {}
 
         for doc_type, file_path in doc_paths.items():
-            t_tool = time.time()
+            t_tool = time.perf_counter()
             path_obj = __import__("pathlib").Path(file_path)
             exists = path_obj.exists()
-            ms_tool = int((time.time() - t_tool) * 1000)
+            ms_tool = int((time.perf_counter() - t_tool) * 1000)
             await self._record_tool_call(
                 "filesystem_check",
                 f"doc_type={doc_type} path={file_path}",
@@ -207,7 +207,7 @@ class DocumentProcessingAgent(BaseApexAgent):
                 except Exception:
                     pass
 
-        ms = int((time.time() - t) * 1000)
+        ms = int((time.perf_counter() - t) * 1000)
         await self._record_node_execution(
             "validate_document_formats",
             ["document_paths"],
@@ -217,7 +217,7 @@ class DocumentProcessingAgent(BaseApexAgent):
         return state
 
     async def _node_extract_is(self, state: DocProcState) -> DocProcState:
-        t = time.time()
+        t = time.perf_counter()
         app_id = state["application_id"]
         doc_paths = state.get("document_paths") or {}
         is_path = doc_paths.get(DocumentType.INCOME_STATEMENT.value)
@@ -247,7 +247,7 @@ class DocumentProcessingAgent(BaseApexAgent):
                 failed_at=datetime.now(),
             ).to_store_dict()
             await self._append_with_retry(f"docpkg-{app_id}", [fail_event])
-            ms = int((time.time() - t) * 1000)
+            ms = int((time.perf_counter() - t) * 1000)
             await self._record_tool_call("papermind_extraction", f"doc={doc_id}", f"FAILED: {exc!s:.100}", ms)
             await self._record_node_execution("extract_income_statement", ["is_path"], ["ExtractionFailed"], ms)
             return {**state, "is_facts": None}
@@ -259,12 +259,12 @@ class DocumentProcessingAgent(BaseApexAgent):
             facts=facts,
             raw_text_length=1000,
             tables_extracted=1,
-            processing_ms=int((time.time() - t) * 1000),
+            processing_ms=int((time.perf_counter() - t) * 1000),
             completed_at=datetime.now(),
         ).to_store_dict()
         await self._append_with_retry(f"docpkg-{app_id}", [complete_event])
 
-        ms = int((time.time() - t) * 1000)
+        ms = int((time.perf_counter() - t) * 1000)
         await self._record_tool_call(
             "papermind_extraction",
             f"doc={doc_id} type=income_statement",
@@ -277,7 +277,7 @@ class DocumentProcessingAgent(BaseApexAgent):
         return {**state, "is_facts": facts.model_dump(mode="json") if facts else None}
 
     async def _node_extract_bs(self, state: DocProcState) -> DocProcState:
-        t = time.time()
+        t = time.perf_counter()
         app_id = state["application_id"]
         doc_paths = state.get("document_paths") or {}
         bs_path = doc_paths.get(DocumentType.BALANCE_SHEET.value)
@@ -306,7 +306,7 @@ class DocumentProcessingAgent(BaseApexAgent):
                 failed_at=datetime.now(),
             ).to_store_dict()
             await self._append_with_retry(f"docpkg-{app_id}", [fail_event])
-            ms = int((time.time() - t) * 1000)
+            ms = int((time.perf_counter() - t) * 1000)
             await self._record_tool_call("papermind_extraction", f"doc={doc_id}", f"FAILED: {exc!s:.100}", ms)
             await self._record_node_execution("extract_balance_sheet", ["bs_path"], ["ExtractionFailed"], ms)
             return {**state, "bs_facts": None}
@@ -318,12 +318,12 @@ class DocumentProcessingAgent(BaseApexAgent):
             facts=facts,
             raw_text_length=1000,
             tables_extracted=1,
-            processing_ms=int((time.time() - t) * 1000),
+            processing_ms=int((time.perf_counter() - t) * 1000),
             completed_at=datetime.now(),
         ).to_store_dict()
         await self._append_with_retry(f"docpkg-{app_id}", [complete_event])
 
-        ms = int((time.time() - t) * 1000)
+        ms = int((time.perf_counter() - t) * 1000)
         await self._record_tool_call(
             "papermind_extraction",
             f"doc={doc_id} type=balance_sheet",
@@ -336,7 +336,7 @@ class DocumentProcessingAgent(BaseApexAgent):
         return {**state, "bs_facts": facts.model_dump(mode="json") if facts else None}
 
     async def _node_assess_quality(self, state: DocProcState) -> DocProcState:
-        t = time.time()
+        t = time.perf_counter()
         app_id = state["application_id"]
         is_facts = state.get("is_facts") or {}
         bs_facts = state.get("bs_facts") or {}
@@ -383,7 +383,7 @@ Assess quality only. Do not make lending decisions."""
         ).to_store_dict()
         await self._append_with_retry(f"docpkg-{app_id}", [qa_event])
 
-        ms = int((time.time() - t) * 1000)
+        ms = int((time.perf_counter() - t) * 1000)
         await self._record_node_execution(
             "assess_quality",
             ["is_facts", "bs_facts"],
@@ -393,7 +393,7 @@ Assess quality only. Do not make lending decisions."""
         return {**state, "quality_assessment": qa}
 
     async def _node_write_output(self, state: DocProcState) -> DocProcState:
-        t = time.time()
+        t = time.perf_counter()
         app_id = state["application_id"]
         qa = state.get("quality_assessment") or {}
         anomalies = qa.get("anomalies", [])
@@ -424,7 +424,7 @@ Assess quality only. Do not make lending decisions."""
         ]
         await self._record_output_written(events_written, "Document package ready. Credit analysis triggered.")
 
-        ms = int((time.time() - t) * 1000)
+        ms = int((time.perf_counter() - t) * 1000)
         await self._record_node_execution(
             "write_output", ["quality_assessment"], ["events_written"], ms
         )
@@ -508,7 +508,7 @@ class FraudDetectionAgent(BaseApexAgent):
         )
 
     async def _node_validate_inputs(self, state: FraudState) -> FraudState:
-        t = time.time()
+        t = time.perf_counter()
         app_id = state["application_id"]
         errors = []
 
@@ -526,7 +526,7 @@ class FraudDetectionAgent(BaseApexAgent):
             await self._record_input_failed(["FraudScreeningRequested"], errors)
             raise ValueError(f"Input validation failed: {errors}")
 
-        ms = int((time.time() - t) * 1000)
+        ms = int((time.perf_counter() - t) * 1000)
         await self._record_input_validated(["application_id", "FraudScreeningRequested"], ms)
         await self._record_node_execution(
             "validate_inputs", ["application_id"], ["validated"], ms
@@ -534,7 +534,7 @@ class FraudDetectionAgent(BaseApexAgent):
         return {**state, "errors": errors}
 
     async def _node_load_facts(self, state: FraudState) -> FraudState:
-        t = time.time()
+        t = time.perf_counter()
         app_id = state["application_id"]
 
         # Append FraudScreeningInitiated to fraud stream
@@ -558,7 +558,7 @@ class FraudDetectionAgent(BaseApexAgent):
                 if v is not None and k not in merged_facts:
                     merged_facts[k] = v
 
-        ms = int((time.time() - t) * 1000)
+        ms = int((time.perf_counter() - t) * 1000)
         await self._record_tool_call(
             "load_event_store_stream",
             f"stream_id=docpkg-{app_id} filter=ExtractionCompleted",
@@ -571,7 +571,7 @@ class FraudDetectionAgent(BaseApexAgent):
         return {**state, "extracted_facts": merged_facts}
 
     async def _node_cross_reference(self, state: FraudState) -> FraudState:
-        t = time.time()
+        t = time.perf_counter()
         app_id = state["application_id"]
 
         # Get applicant_id from loan stream
@@ -611,7 +611,7 @@ class FraudDetectionAgent(BaseApexAgent):
             except Exception:
                 pass
 
-        ms = int((time.time() - t) * 1000)
+        ms = int((time.perf_counter() - t) * 1000)
         await self._record_tool_call(
             "query_applicant_registry",
             f"company_id={applicant_id}",
@@ -627,7 +627,7 @@ class FraudDetectionAgent(BaseApexAgent):
         return {**state, "registry_profile": profile_dict, "historical_financials": financials}
 
     async def _node_analyze(self, state: FraudState) -> FraudState:
-        t = time.time()
+        t = time.perf_counter()
         app_id = state["application_id"]
         facts = state.get("extracted_facts") or {}
         hist = state.get("historical_financials") or []
@@ -687,7 +687,7 @@ Identify any anomalous gaps between the submitted documents and historical regis
             except Exception:
                 pass
 
-        ms = int((time.time() - t) * 1000)
+        ms = int((time.perf_counter() - t) * 1000)
         await self._record_node_execution(
             "analyze_fraud_patterns",
             ["extracted_facts", "historical_financials"],
@@ -702,7 +702,7 @@ Identify any anomalous gaps between the submitted documents and historical regis
         }
 
     async def _node_write_output(self, state: FraudState) -> FraudState:
-        t = time.time()
+        t = time.perf_counter()
         app_id = state["application_id"]
         fraud_score = state.get("fraud_score") or 0.05
         anomalies = state.get("anomalies") or []
@@ -749,7 +749,7 @@ Identify any anomalous gaps between the submitted documents and historical regis
             f"Fraud: {risk_level} risk (score={fraud_score:.2f}), {len(anomalies)} anomalies. Compliance triggered.",
         )
 
-        ms = int((time.time() - t) * 1000)
+        ms = int((time.perf_counter() - t) * 1000)
         await self._record_node_execution(
             "write_output", ["fraud_score", "anomalies"], ["events_written"], ms
         )
@@ -889,7 +889,7 @@ class ComplianceAgent(BaseApexAgent):
         )
 
     async def _node_validate_inputs(self, state: ComplianceState) -> ComplianceState:
-        t = time.time()
+        t = time.perf_counter()
         app_id = state["application_id"]
         errors = []
 
@@ -906,7 +906,7 @@ class ComplianceAgent(BaseApexAgent):
             await self._record_input_failed(["ComplianceCheckRequested"], errors)
             raise ValueError(f"Input validation failed: {errors}")
 
-        ms = int((time.time() - t) * 1000)
+        ms = int((time.perf_counter() - t) * 1000)
         await self._record_input_validated(["application_id", "ComplianceCheckRequested"], ms)
         await self._record_node_execution(
             "validate_inputs", ["application_id"], ["validated"], ms
@@ -914,7 +914,7 @@ class ComplianceAgent(BaseApexAgent):
         return {**state, "errors": errors}
 
     async def _node_load_profile(self, state: ComplianceState) -> ComplianceState:
-        t = time.time()
+        t = time.perf_counter()
         app_id = state["application_id"]
 
         # Get applicant_id and requested_amount from loan stream
@@ -964,7 +964,7 @@ class ComplianceAgent(BaseApexAgent):
         ).to_store_dict()
         await self._append_with_retry(f"compliance-{app_id}", [init_event])
 
-        ms = int((time.time() - t) * 1000)
+        ms = int((time.perf_counter() - t) * 1000)
         await self._record_tool_call(
             "query_applicant_registry",
             f"company_id={applicant_id}",
@@ -977,7 +977,7 @@ class ComplianceAgent(BaseApexAgent):
         return {**state, "company_profile": company_profile, "requested_amount_usd": requested_amount}
 
     async def _evaluate_rule(self, state: ComplianceState, rule_id: str) -> ComplianceState:
-        t = time.time()
+        t = time.perf_counter()
         app_id = state["application_id"]
         reg = REGULATIONS[rule_id]
         co = dict(state.get("company_profile") or {})
@@ -1035,7 +1035,7 @@ class ComplianceAgent(BaseApexAgent):
             new_state["has_hard_block"] = True
             new_state["block_rule_id"] = rule_id
 
-        ms = int((time.time() - t) * 1000)
+        ms = int((time.perf_counter() - t) * 1000)
         node_name = f"evaluate_{rule_id.lower().replace('-', '_')}"
         await self._record_node_execution(
             node_name, ["company_profile"], [f"{rule_id}_result"], ms
@@ -1043,7 +1043,7 @@ class ComplianceAgent(BaseApexAgent):
         return new_state
 
     async def _node_write_output(self, state: ComplianceState) -> ComplianceState:
-        t = time.time()
+        t = time.perf_counter()
         app_id = state["application_id"]
         results = state.get("rule_results") or []
         has_hard_block = state.get("has_hard_block", False)
@@ -1103,7 +1103,7 @@ class ComplianceAgent(BaseApexAgent):
             events_written,
             f"Compliance: {overall_verdict.value}, {len(results)} rules evaluated.",
         )
-        ms = int((time.time() - t) * 1000)
+        ms = int((time.perf_counter() - t) * 1000)
         await self._record_node_execution(
             "write_output", ["rule_results"], ["events_written"], ms
         )
@@ -1193,7 +1193,7 @@ class DecisionOrchestratorAgent(BaseApexAgent):
         )
 
     async def _node_validate_inputs(self, state: OrchestratorState) -> OrchestratorState:
-        t = time.time()
+        t = time.perf_counter()
         app_id = state["application_id"]
         errors = []
 
@@ -1210,7 +1210,7 @@ class DecisionOrchestratorAgent(BaseApexAgent):
             await self._record_input_failed(["DecisionRequested"], errors)
             raise ValueError(f"Input validation failed: {errors}")
 
-        ms = int((time.time() - t) * 1000)
+        ms = int((time.perf_counter() - t) * 1000)
         await self._record_input_validated(["application_id", "DecisionRequested"], ms)
         await self._record_node_execution(
             "validate_inputs", ["application_id"], ["validated"], ms
@@ -1218,7 +1218,7 @@ class DecisionOrchestratorAgent(BaseApexAgent):
         return {**state, "errors": errors}
 
     async def _node_load_credit(self, state: OrchestratorState) -> OrchestratorState:
-        t = time.time()
+        t = time.perf_counter()
         app_id = state["application_id"]
 
         credit_events = await self.store.load_stream(f"credit-{app_id}")
@@ -1237,7 +1237,7 @@ class DecisionOrchestratorAgent(BaseApexAgent):
                 }
                 break
 
-        ms = int((time.time() - t) * 1000)
+        ms = int((time.perf_counter() - t) * 1000)
         await self._record_tool_call(
             "load_event_store_stream",
             f"stream_id=credit-{app_id} filter=CreditAnalysisCompleted",
@@ -1250,7 +1250,7 @@ class DecisionOrchestratorAgent(BaseApexAgent):
         return {**state, "credit_result": credit_result}
 
     async def _node_load_fraud(self, state: OrchestratorState) -> OrchestratorState:
-        t = time.time()
+        t = time.perf_counter()
         app_id = state["application_id"]
 
         fraud_events = await self.store.load_stream(f"fraud-{app_id}")
@@ -1267,7 +1267,7 @@ class DecisionOrchestratorAgent(BaseApexAgent):
                 }
                 break
 
-        ms = int((time.time() - t) * 1000)
+        ms = int((time.perf_counter() - t) * 1000)
         await self._record_tool_call(
             "load_event_store_stream",
             f"stream_id=fraud-{app_id} filter=FraudScreeningCompleted",
@@ -1280,7 +1280,7 @@ class DecisionOrchestratorAgent(BaseApexAgent):
         return {**state, "fraud_result": fraud_result}
 
     async def _node_load_compliance(self, state: OrchestratorState) -> OrchestratorState:
-        t = time.time()
+        t = time.perf_counter()
         app_id = state["application_id"]
 
         compliance_events = await self.store.load_stream(f"compliance-{app_id}")
@@ -1297,7 +1297,7 @@ class DecisionOrchestratorAgent(BaseApexAgent):
                 }
                 break
 
-        ms = int((time.time() - t) * 1000)
+        ms = int((time.perf_counter() - t) * 1000)
         await self._record_tool_call(
             "load_event_store_stream",
             f"stream_id=compliance-{app_id} filter=ComplianceCheckCompleted",
@@ -1310,7 +1310,7 @@ class DecisionOrchestratorAgent(BaseApexAgent):
         return {**state, "compliance_result": compliance_result}
 
     async def _node_synthesize(self, state: OrchestratorState) -> OrchestratorState:
-        t = time.time()
+        t = time.perf_counter()
         credit = state.get("credit_result") or {}
         fraud = state.get("fraud_result") or {}
         compliance = state.get("compliance_result") or {}
@@ -1352,7 +1352,7 @@ Synthesise these three analyses into a final recommendation."""
         except Exception as exc:
             decision["executive_summary"] = f"LLM synthesis failed: {exc!s:.100}"
 
-        ms = int((time.time() - t) * 1000)
+        ms = int((time.perf_counter() - t) * 1000)
         await self._record_node_execution(
             "synthesize_decision",
             ["credit_result", "fraud_result", "compliance_result"],
@@ -1369,7 +1369,7 @@ Synthesise these three analyses into a final recommendation."""
         }
 
     async def _node_constraints(self, state: OrchestratorState) -> OrchestratorState:
-        t = time.time()
+        t = time.perf_counter()
         compliance = state.get("compliance_result") or {}
         fraud = state.get("fraud_result") or {}
         credit = state.get("credit_result") or {}
@@ -1401,7 +1401,7 @@ Synthesise these three analyses into a final recommendation."""
             recommendation = "REFER"
             constraints_applied.append("HIGH_RISK_LOW_CONFIDENCE_FORCED_REFER")
 
-        ms = int((time.time() - t) * 1000)
+        ms = int((time.perf_counter() - t) * 1000)
         await self._record_node_execution(
             "apply_hard_constraints",
             ["recommendation", "confidence", "compliance_result", "fraud_result"],
@@ -1415,7 +1415,7 @@ Synthesise these three analyses into a final recommendation."""
         }
 
     async def _node_write_output(self, state: OrchestratorState) -> OrchestratorState:
-        t = time.time()
+        t = time.perf_counter()
         app_id = state["application_id"]
         recommendation = state.get("recommendation") or "REFER"
         confidence = state.get("confidence") or 0.5
@@ -1497,7 +1497,7 @@ Synthesise these three analyses into a final recommendation."""
             events_written,
             f"Decision: {recommendation}, confidence={confidence:.0%}, constraints={constraints}",
         )
-        ms = int((time.time() - t) * 1000)
+        ms = int((time.perf_counter() - t) * 1000)
         await self._record_node_execution(
             "write_output", ["recommendation", "confidence"], ["events_written"], ms
         )
