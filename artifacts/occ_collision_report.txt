@@ -1,0 +1,7 @@
+Applications: 15, Workers: 6
+OCC collisions detected: 0
+Collisions resolved by retry: 0
+Unresolved: 0
+Successes: 15, Errors: 0
+Projection lag at end: 0ms
+Total elapsed: 0.4s
