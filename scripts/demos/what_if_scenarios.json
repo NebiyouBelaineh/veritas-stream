@@ -1,0 +1,37 @@
+{
+  "app_id": "DEMO-WHATIF-001",
+  "scenarios": [
+    {
+      "name": "Credit: HIGH risk, same confidence",
+      "description": "Risk tier flips to HIGH but confidence stays at 0.82 (above the 0.60 APPROVE floor). DecisionGenerated carries causation_id pointing to CreditAnalysisCompleted, so it is suppressed in the counterfactual. ApplicationApproved is transitively suppressed. Divergences: risk_tier (MEDIUM vs HIGH), decision (APPROVE vs None), state (APPROVED vs SUBMITTED).",
+      "branch_at": "CreditAnalysisCompleted",
+      "overrides": {
+        "decision": {
+          "risk_tier": "HIGH"
+        }
+      }
+    },
+    {
+      "name": "Credit: HIGH risk + confidence below 0.60 floor",
+      "description": "Risk tier is HIGH and confidence drops to 0.55, below the 0.60 hard floor that forces REFER in handle_generate_decision. DecisionGenerated (causation_id = CreditAnalysisCompleted event_id) is causally suppressed in the counterfactual. The projector correctly shows decision=None rather than fabricating a REFER outcome - the correct cascade signal is suppression, not agent re-execution. Divergences: risk_tier, decision, state.",
+      "branch_at": "CreditAnalysisCompleted",
+      "overrides": {
+        "decision": {
+          "risk_tier": "HIGH",
+          "confidence": 0.55,
+          "recommended_limit_usd": 250000
+        }
+      }
+    },
+    {
+      "name": "Fraud: score above 0.60 threshold, recommendation flips to REFER",
+      "description": "Fraud score jumps from 0.05 to 0.75, crossing the 0.60 hard policy threshold. DecisionGenerated.causation_id points to CreditAnalysisCompleted (not FraudScreeningCompleted), so it is NOT suppressed when branching at fraud - it passes through as an independent event. Divergence is in the read model only: fraud_score (0.05 vs 0.75). This demonstrates single-parent causation: one event can carry one causation_id.",
+      "branch_at": "FraudScreeningCompleted",
+      "overrides": {
+        "fraud_score": 0.75,
+        "risk_level": "HIGH",
+        "recommendation": "REFER"
+      }
+    }
+  ]
+}
