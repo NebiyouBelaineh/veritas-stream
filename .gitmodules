@@ -1,0 +1,3 @@
+[submodule "paperMind-ai"]
+	path = paperMind-ai
+	url = https://github.com/NebiyouBelaineh/paperMind-ai.git
