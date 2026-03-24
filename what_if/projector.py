@@ -53,7 +53,10 @@ def _causation_id(event: dict) -> str | None:
 
 
 def _event_id(event: dict) -> str | None:
-    return event.get("event_id")
+    # asyncpg returns event_id as a UUID object; causation_id stored in JSONB
+    # metadata is a plain string. Normalise to str so set membership works.
+    eid = event.get("event_id")
+    return str(eid) if eid is not None else None
 
 
 def _is_causally_dependent(event: dict, suppressed_ids: set[str]) -> bool:

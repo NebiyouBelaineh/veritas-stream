@@ -78,7 +78,19 @@ class ApplicationSummaryProjection(Projection):
         elif et == "FraudScreeningCompleted":
             row.fraud_score = p.get("fraud_score")
 
+        elif et == "ComplianceRulePassed":
+            # Individual rule passed; mark PASSED unless already BLOCKED.
+            if row.compliance_status != "BLOCKED":
+                row.compliance_status = "PASSED"
+
+        elif et == "ComplianceRuleFailed":
+            if p.get("is_hard_block"):
+                row.compliance_status = "BLOCKED"
+            elif row.compliance_status != "BLOCKED":
+                row.compliance_status = "FAILED"
+
         elif et == "ComplianceCheckCompleted":
+            # Summary event overrides incremental rule status with the authoritative verdict.
             row.compliance_status = p.get("overall_verdict")
 
         elif et == "DecisionGenerated":

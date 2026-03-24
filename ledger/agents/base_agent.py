@@ -118,8 +118,18 @@ class BaseApexAgent(ABC):
             "recoverable":etype in ("llm_timeout","RateLimitError"),"failed_at":datetime.now().isoformat()}})
 
     async def _append_session(self, event: dict):
-        """TODO: replace print with actual EventStore.append() call"""
+        """Append a session-scoped event to the agent session stream."""
         print(f"  [{self.agent_type[:8]}:{self.session_id}] {event['event_type']}")
+        if self.store and self._session_stream:
+            try:
+                ver = await self.store.stream_version(self._session_stream)
+                await self.store.append(
+                    stream_id=self._session_stream,
+                    events=[event],
+                    expected_version=ver,
+                )
+            except Exception:
+                pass  # Never fail the agent because of session recording
 
     async def _append_stream(self, stream_id: str, event_dict: dict, causation_id: str = None):
         """Append to any aggregate stream with OCC retry."""
@@ -187,6 +197,52 @@ class BaseApexAgent(ABC):
 
     @staticmethod
     def _sha(d): return hashlib.sha256(json.dumps(str(d),sort_keys=True).encode()).hexdigest()[:16]
+
+    async def _append_with_retry(
+        self, stream_id: str, events: list[dict], causation_id: str | None = None
+    ) -> list[int]:
+        """Append to any aggregate stream with OCC retry. Returns list of positions."""
+        for attempt in range(MAX_OCC_RETRIES):
+            try:
+                ver = await self.store.stream_version(stream_id)
+                positions = await self.store.append(
+                    stream_id=stream_id, events=events,
+                    expected_version=ver, causation_id=causation_id,
+                )
+                return positions
+            except Exception as e:
+                if "OptimisticConcurrencyError" in type(e).__name__ and attempt < MAX_OCC_RETRIES - 1:
+                    await asyncio.sleep(0.05 * (2 ** attempt))
+                    continue
+                raise
+        return []
+
+    async def _record_input_validated(self, inputs_validated: list[str], ms: int) -> None:
+        await self._append_session({"event_type": "AgentInputValidated", "event_version": 1, "payload": {
+            "session_id": self.session_id, "agent_type": self.agent_type,
+            "application_id": self.application_id,
+            "inputs_validated": inputs_validated,
+            "validation_duration_ms": ms,
+            "validated_at": datetime.now().isoformat(),
+        }})
+
+    async def _record_input_failed(self, missing_inputs: list[str], validation_errors: list[str]) -> None:
+        await self._append_session({"event_type": "AgentInputValidationFailed", "event_version": 1, "payload": {
+            "session_id": self.session_id, "agent_type": self.agent_type,
+            "application_id": self.application_id,
+            "missing_inputs": missing_inputs,
+            "validation_errors": validation_errors,
+            "failed_at": datetime.now().isoformat(),
+        }})
+
+    @staticmethod
+    def _parse_json(content: str) -> dict:
+        """Extract and parse the first JSON object from LLM response text."""
+        import re
+        m = re.search(r'\{.*\}', content, re.DOTALL)
+        if m:
+            return json.loads(m.group())
+        raise ValueError(f"No JSON object found in LLM response: {content[:200]}")
 
 
 class CreditAnalysisAgent(BaseApexAgent):
