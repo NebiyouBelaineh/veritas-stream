@@ -98,10 +98,10 @@ class LoanApplicationAggregate:
         Dispatch one stored event to its per-type handler method.
 
         Precondition: event dict contains 'event_type' and 'payload'.
-        Guarantee: self.version increments; matching _on_<event_type> called if it exists.
+        Guarantee: self.version = stream_position; matching _on_<event_type> called if it exists.
         Unknown event types are silently ignored (forward compatibility).
         """
-        self.version += 1
+        self.version = event.get("stream_position", self.version + 1)
         handler = getattr(self, f"_on_{event.get('event_type', '')}", None)
         if handler:
             handler(event.get("payload", {}))

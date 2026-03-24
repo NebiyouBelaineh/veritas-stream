@@ -116,10 +116,11 @@ class EventStore:
                         stream_id, stream_id.split("-")[0])
 
                 # 5. Insert each event + outbox row in the same transaction
-                # base = expected_version so first pos = expected_version+1.
-                # For new streams (expected_version=-1): first pos = 0, version = 0.
-                # Matches InMemoryEventStore and aggregate version counting.
-                base = expected_version
+                # stream_position is 1-based: first event on a new stream gets pos=1.
+                # expected_version=-1 is a sentinel for "new stream"; treat as base=0
+                # so first pos = 0+1 = 1. For existing streams (expected_version=N),
+                # base=N and next pos = N+1.
+                base = max(expected_version, 0)
                 positions = []
                 meta = {**(metadata or {})}
                 if causation_id: meta["causation_id"] = causation_id
@@ -461,8 +462,9 @@ class InMemoryEventStore:
             if correlation_id:
                 meta["correlation_id"] = correlation_id
 
+            base = max(current, 0)  # -1 sentinel for new stream → base=0, first pos=1
             for i, event in enumerate(events):
-                pos = current + 1 + i
+                pos = base + 1 + i
                 stored = {
                     "event_id": str(_uuid4()),
                     "stream_id": stream_id,
@@ -478,7 +480,7 @@ class InMemoryEventStore:
                 self._global.append(stored)
                 positions.append(pos)
 
-            self._versions[stream_id] = current + len(events)
+            self._versions[stream_id] = base + len(events)
             return positions
 
     async def load_stream(

@@ -35,7 +35,7 @@ class ComplianceRecordAggregate:
         """Apply one stored event."""
         et = event.get("event_type")
         p = event.get("payload", {})
-        self.version += 1
+        self.version = event.get("stream_position", self.version + 1)
 
         if et == "ComplianceCheckInitiated":
             pass  # No state change needed — rules_passed/failed start empty

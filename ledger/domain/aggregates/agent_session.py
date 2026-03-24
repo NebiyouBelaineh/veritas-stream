@@ -53,7 +53,7 @@ class AgentSessionAggregate:
 
     def apply(self, event: dict) -> None:
         """Apply one stored event by dispatching to the matching _on_* handler."""
-        self.version += 1
+        self.version = event.get("stream_position", self.version + 1)
         et = event.get("event_type", "")
         handler = getattr(self, f"_on_{et}", None)
         if handler:

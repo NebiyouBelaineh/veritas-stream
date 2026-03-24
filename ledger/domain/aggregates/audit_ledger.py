@@ -34,7 +34,7 @@ class AuditLedgerAggregate:
         """Apply one stored event."""
         et = event.get("event_type")
         p = event.get("payload", {})
-        self.version += 1
+        self.version = event.get("stream_position", self.version + 1)
 
         if et == "AuditIntegrityCheckRun":
             self.entity_type = p.get("entity_type", self.entity_type)
