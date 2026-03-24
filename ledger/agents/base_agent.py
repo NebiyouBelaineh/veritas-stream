@@ -24,11 +24,13 @@ _GEMINI_IN_PER_M     = 0.15   # gemini-2.5-flash
 _GEMINI_OUT_PER_M    = 0.60
 
 
-def _load_model_config() -> tuple[str, str]:
-    """Return (gemini_model, anthropic_model) from environment."""
-    gemini = os.getenv("GEMINI_LLM_MODEL", "google/gemini-2.5-flash")
-    anthropic = os.getenv("ANTHROPIC_LLM_MODEL", "claude-haiku-4-5-20251001")
-    return gemini, anthropic
+def _load_model_config() -> tuple[str, str, str | None, str | None]:
+    """Return (gemini_model, anthropic_model, gemini_api_key, anthropic_api_key) from env."""
+    gemini_model = os.getenv("GEMINI_LLM_MODEL", "google/gemini-2.5-flash")
+    anthropic_model = os.getenv("ANTHROPIC_LLM_MODEL", "claude-haiku-4-5-20251001")
+    gemini_key = os.getenv("GEMINI_API_KEY") or None
+    anthropic_key = os.getenv("ANTHROPIC_API_KEY") or None
+    return gemini_model, anthropic_model, gemini_key, anthropic_key
 
 
 class BaseApexAgent(ABC):
@@ -43,14 +45,24 @@ class BaseApexAgent(ABC):
     Each tool/registry call must call self._record_tool_call().
     The write_output node must call self._record_output_written() then self._record_node_execution().
 
-    LLM provider: Gemini (via OpenRouter) by default; Anthropic as backup.
-    Models are loaded from GEMINI_LLM_MODEL and ANTHROPIC_LLM_MODEL env vars.
+    LLM provider: Gemini (via OpenRouter) primary; Anthropic fallback.
+    Keys and models are loaded from GEMINI_API_KEY / GEMINI_LLM_MODEL and
+    ANTHROPIC_API_KEY / ANTHROPIC_LLM_MODEL env vars. The injected `client`
+    is used only when no ANTHROPIC_API_KEY is set in the environment (e.g.
+    tests that pass a mock client directly).
     """
-    def __init__(self, agent_id: str, agent_type: str, store, registry, client: AsyncAnthropic):
+    def __init__(self, agent_id: str, agent_type: str, store, registry, client: AsyncAnthropic | None = None):
         self.agent_id = agent_id; self.agent_type = agent_type
-        self.store = store; self.registry = registry; self.client = client
-        self.gemini_model, self.model = _load_model_config()
-        self._gemini_api_key = os.getenv("GEMINI_API_KEY")
+        self.store = store; self.registry = registry
+        self.gemini_model, self.model, self._gemini_api_key, anthropic_key = _load_model_config()
+        # Build Anthropic client from env key; fall back to injected client for tests.
+        if anthropic_key:
+            try:
+                self.client = AsyncAnthropic(api_key=anthropic_key)
+            except Exception:
+                self.client = client  # httpx version issue in this env; use injected
+        else:
+            self.client = client
         self.session_id = None; self.application_id = None
         self._session_stream = None; self._t0 = None
         self._seq = 0; self._llm_calls = 0; self._tokens = 0; self._cost = 0.0
@@ -146,7 +158,12 @@ class BaseApexAgent(ABC):
 
     async def _call_llm(self, system: str, user: str, max_tokens: int = 1024):
         """
-        Call LLM with Gemini (OpenRouter) as primary, Anthropic as backup.
+        Call LLM with Gemini (OpenRouter) as primary, Anthropic as fallback.
+
+        Priority:
+          1. GEMINI_API_KEY set  → call Gemini; on failure fall through to (2).
+          2. ANTHROPIC_API_KEY set (or injected client) → call Anthropic.
+          3. Neither available  → raise RuntimeError.
 
         Returns (text, input_tokens, output_tokens, cost_usd).
         """
@@ -154,8 +171,13 @@ class BaseApexAgent(ABC):
             try:
                 return await self._call_gemini(system, user, max_tokens)
             except Exception:
-                pass  # fall through to Anthropic backup
-        return await self._call_anthropic(system, user, max_tokens)
+                pass  # fall through to Anthropic fallback
+        if self.client is not None:
+            return await self._call_anthropic(system, user, max_tokens)
+        raise RuntimeError(
+            "No LLM provider available: set GEMINI_API_KEY (primary) or "
+            "ANTHROPIC_API_KEY (fallback) in the environment."
+        )
 
     async def _call_gemini(self, system: str, user: str, max_tokens: int):
         """Call Gemini via OpenRouter (OpenAI-compatible endpoint)."""
