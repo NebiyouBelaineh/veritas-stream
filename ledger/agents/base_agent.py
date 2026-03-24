@@ -6,7 +6,7 @@ CreditAnalysisAgent is the reference implementation with full LangGraph pattern.
 The other 4 agents are stubs with complete docstrings for implementation.
 """
 from __future__ import annotations
-import asyncio, hashlib, json, time
+import asyncio, hashlib, httpx, json, os, time
 from abc import ABC, abstractmethod
 from datetime import datetime
 from uuid import uuid4
@@ -15,6 +15,21 @@ from langgraph.graph import StateGraph, END
 
 LANGGRAPH_VERSION = "1.0.0"
 MAX_OCC_RETRIES = 5
+OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+
+# Pricing constants (per million tokens)
+_ANTHROPIC_IN_PER_M  = 0.80   # claude-haiku-4-5
+_ANTHROPIC_OUT_PER_M = 4.00
+_GEMINI_IN_PER_M     = 0.15   # gemini-2.5-flash
+_GEMINI_OUT_PER_M    = 0.60
+
+
+def _load_model_config() -> tuple[str, str]:
+    """Return (gemini_model, anthropic_model) from environment."""
+    gemini = os.getenv("GEMINI_LLM_MODEL", "google/gemini-2.5-flash")
+    anthropic = os.getenv("ANTHROPIC_LLM_MODEL", "claude-haiku-4-5-20251001")
+    return gemini, anthropic
+
 
 class BaseApexAgent(ABC):
     """
@@ -27,10 +42,15 @@ class BaseApexAgent(ABC):
     Each node must call self._record_node_execution() at its end.
     Each tool/registry call must call self._record_tool_call().
     The write_output node must call self._record_output_written() then self._record_node_execution().
+
+    LLM provider: Gemini (via OpenRouter) by default; Anthropic as backup.
+    Models are loaded from GEMINI_LLM_MODEL and ANTHROPIC_LLM_MODEL env vars.
     """
-    def __init__(self, agent_id: str, agent_type: str, store, registry, client: AsyncAnthropic, model="claude-sonnet-4-20250514"):
+    def __init__(self, agent_id: str, agent_type: str, store, registry, client: AsyncAnthropic):
         self.agent_id = agent_id; self.agent_type = agent_type
-        self.store = store; self.registry = registry; self.client = client; self.model = model
+        self.store = store; self.registry = registry; self.client = client
+        self.gemini_model, self.model = _load_model_config()
+        self._gemini_api_key = os.getenv("GEMINI_API_KEY")
         self.session_id = None; self.application_id = None
         self._session_stream = None; self._t0 = None
         self._seq = 0; self._llm_calls = 0; self._tokens = 0; self._cost = 0.0
@@ -59,7 +79,7 @@ class BaseApexAgent(ABC):
     async def _start_session(self, app_id):
         await self._append_session({"event_type":"AgentSessionStarted","event_version":1,"payload":{
             "session_id":self.session_id,"agent_type":self.agent_type,"agent_id":self.agent_id,
-            "application_id":app_id,"model_version":self.model,"langgraph_graph_version":LANGGRAPH_VERSION,
+            "application_id":app_id,"model_version":self.gemini_model if self._gemini_api_key else self.model,"langgraph_graph_version":LANGGRAPH_VERSION,
             "context_source":"fresh","context_token_count":1000,"started_at":datetime.now().isoformat()}})
 
     async def _record_node_execution(self, name, in_keys, out_keys, ms, tok_in=None, tok_out=None, cost=None):
@@ -114,11 +134,56 @@ class BaseApexAgent(ABC):
                     await asyncio.sleep(0.1 * (2**attempt)); continue
                 raise
 
-    async def _call_llm(self, system, user, max_tokens=1024):
-        resp = await self.client.messages.create(model=self.model, max_tokens=max_tokens,
-            system=system, messages=[{"role":"user","content":user}])
-        t = resp.content[0].text; i = resp.usage.input_tokens; o = resp.usage.output_tokens
-        return t, i, o, round(i/1e6*3.0 + o/1e6*15.0, 6)
+    async def _call_llm(self, system: str, user: str, max_tokens: int = 1024):
+        """
+        Call LLM with Gemini (OpenRouter) as primary, Anthropic as backup.
+
+        Returns (text, input_tokens, output_tokens, cost_usd).
+        """
+        if self._gemini_api_key:
+            try:
+                return await self._call_gemini(system, user, max_tokens)
+            except Exception:
+                pass  # fall through to Anthropic backup
+        return await self._call_anthropic(system, user, max_tokens)
+
+    async def _call_gemini(self, system: str, user: str, max_tokens: int):
+        """Call Gemini via OpenRouter (OpenAI-compatible endpoint)."""
+        payload = {
+            "model": self.gemini_model,
+            "max_tokens": max_tokens,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+        }
+        async with httpx.AsyncClient(timeout=60.0) as http:
+            resp = await http.post(
+                OPENROUTER_URL,
+                json=payload,
+                headers={"Authorization": f"Bearer {self._gemini_api_key}",
+                         "Content-Type": "application/json"},
+            )
+            resp.raise_for_status()
+            data = resp.json()
+        text = data["choices"][0]["message"]["content"]
+        usage = data.get("usage", {})
+        i = usage.get("prompt_tokens", 0)
+        o = usage.get("completion_tokens", 0)
+        cost = round(i / 1e6 * _GEMINI_IN_PER_M + o / 1e6 * _GEMINI_OUT_PER_M, 6)
+        return text, i, o, cost
+
+    async def _call_anthropic(self, system: str, user: str, max_tokens: int):
+        """Call Anthropic Claude directly."""
+        resp = await self.client.messages.create(
+            model=self.model, max_tokens=max_tokens,
+            system=system, messages=[{"role": "user", "content": user}],
+        )
+        text = resp.content[0].text
+        i = resp.usage.input_tokens
+        o = resp.usage.output_tokens
+        cost = round(i / 1e6 * _ANTHROPIC_IN_PER_M + o / 1e6 * _ANTHROPIC_OUT_PER_M, 6)
+        return text, i, o, cost
 
     @staticmethod
     def _sha(d): return hashlib.sha256(json.dumps(str(d),sort_keys=True).encode()).hexdigest()[:16]

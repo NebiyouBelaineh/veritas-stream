@@ -116,8 +116,10 @@ class EventStore:
                         stream_id, stream_id.split("-")[0])
 
                 # 5. Insert each event + outbox row in the same transaction
-                # base is 0 for new streams (expected_version=-1) so first pos = 1
-                base = max(0, expected_version)
+                # base = expected_version so first pos = expected_version+1.
+                # For new streams (expected_version=-1): first pos = 0, version = 0.
+                # Matches InMemoryEventStore and aggregate version counting.
+                base = expected_version
                 positions = []
                 meta = {**(metadata or {})}
                 if causation_id: meta["causation_id"] = causation_id
