@@ -8,20 +8,24 @@ TMP_RENDERED  := /tmp/vs-report-rendered.md
 TMP_INLINED   := /tmp/vs-report-inlined.md
 TMP_COMBINED  := /tmp/vs-report-combined.md
 
-WEB_BUILD_DIR := web/.next/BUILD_ID
+WEB_BUILD_DIR := src/web/.next/BUILD_ID
 
-.PHONY: dev pdf clean-pdf pdf-file
+.PHONY: dev build-web pdf clean-pdf pdf-file
+
+## build-web: build the Next.js web app
+build-web:
+	@echo "→ Building web..."
+	cd src/web && bun run build
 
 ## dev: run api and web concurrently (builds web first if .next is missing)
 dev:
 	@if [ ! -f $(WEB_BUILD_DIR) ]; then \
-		echo "→ Web build not found, building..."; \
-		cd web && bun run build; \
+		$(MAKE) build-web; \
 	fi
 	@echo "→ Starting API and web..."
 	@trap 'kill 0' INT; \
-		uv run uvicorn api.main:app --reload --port 8000 & \
-		cd web && bun start & \
+		PYTHONPATH=src uv run uvicorn api.main:app --reload --port 8000 & \
+		cd src/web && bun start & \
 		wait
 
 ## pdf: render Mermaid diagrams and convert report to PDF

@@ -222,8 +222,8 @@ data/
 paperMind-ai/
 
 # Moved to src/ - ignore old root-level locations
-/web/
-/api/
+src/web/
+src/api/
 
 # Doc templates/tools
 docs/reports/inline-images.py
