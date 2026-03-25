@@ -46,7 +46,7 @@ class ApplicationSummaryProjection(Projection):
 
     # ── Projection interface ──────────────────────────────────────────────────
 
-    async def handle(self, event: dict) -> None:
+    async def handle(self, event: dict, conn=None) -> None:
         et = event["event_type"]
         p = event.get("payload", {})
         app_id = p.get("application_id")
@@ -118,6 +118,74 @@ class ApplicationSummaryProjection(Projection):
             sid = p.get("session_id")
             if sid and sid not in row.agent_sessions_completed:
                 row.agent_sessions_completed.append(sid)
+
+        if conn is not None:
+            await self._upsert(row, conn)
+
+    async def _upsert(self, row: "ApplicationSummaryRow", conn) -> None:
+        """Idempotent upsert of one row to the application_summary table."""
+        import decimal
+        def _numeric(v):
+            if v is None:
+                return None
+            try:
+                return decimal.Decimal(str(v))
+            except Exception:
+                return None
+
+        last_event_at = None
+        if row.last_event_at:
+            try:
+                from datetime import datetime
+                last_event_at = datetime.fromisoformat(row.last_event_at)
+            except (ValueError, TypeError):
+                pass
+
+        final_decision_at = None
+        if row.final_decision_at:
+            try:
+                from datetime import datetime
+                final_decision_at = datetime.fromisoformat(row.final_decision_at)
+            except (ValueError, TypeError):
+                pass
+
+        await conn.execute(
+            """INSERT INTO application_summary (
+                   application_id, state, applicant_id,
+                   requested_amount_usd, approved_amount_usd,
+                   risk_tier, fraud_score, compliance_status, decision,
+                   agent_sessions_completed, last_event_type, last_event_at,
+                   human_reviewer_id, final_decision_at
+               ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+               ON CONFLICT (application_id) DO UPDATE SET
+                   state                    = EXCLUDED.state,
+                   applicant_id             = EXCLUDED.applicant_id,
+                   requested_amount_usd     = EXCLUDED.requested_amount_usd,
+                   approved_amount_usd      = EXCLUDED.approved_amount_usd,
+                   risk_tier                = EXCLUDED.risk_tier,
+                   fraud_score              = EXCLUDED.fraud_score,
+                   compliance_status        = EXCLUDED.compliance_status,
+                   decision                 = EXCLUDED.decision,
+                   agent_sessions_completed = EXCLUDED.agent_sessions_completed,
+                   last_event_type          = EXCLUDED.last_event_type,
+                   last_event_at            = EXCLUDED.last_event_at,
+                   human_reviewer_id        = EXCLUDED.human_reviewer_id,
+                   final_decision_at        = EXCLUDED.final_decision_at""",
+            row.application_id,
+            row.state,
+            row.applicant_id,
+            _numeric(row.requested_amount_usd),
+            _numeric(row.approved_amount_usd),
+            row.risk_tier,
+            _numeric(row.fraud_score),
+            row.compliance_status,
+            row.decision,
+            row.agent_sessions_completed,
+            row.last_event_type,
+            last_event_at,
+            row.human_reviewer_id,
+            final_decision_at,
+        )
 
     async def truncate(self) -> None:
         self._rows.clear()

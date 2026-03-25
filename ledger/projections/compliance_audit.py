@@ -56,7 +56,7 @@ class ComplianceAuditViewProjection(Projection):
 
     # ── Projection interface ──────────────────────────────────────────────────
 
-    async def handle(self, event: dict) -> None:
+    async def handle(self, event: dict, conn=None) -> None:
         et = event["event_type"]
         if et not in (
             "ComplianceCheckInitiated",
@@ -105,6 +105,67 @@ class ComplianceAuditViewProjection(Projection):
         self._log.setdefault(app_id, []).append(record)
         # Keep log sorted by evaluation time for efficient temporal queries
         self._log[app_id].sort(key=lambda r: r.evaluated_at)
+
+        if conn is not None:
+            await self._persist(app_id, record, event, conn)
+
+    async def _persist(self, app_id: str, record: "ComplianceEventRecord", event: dict, conn) -> None:
+        """Write compliance event to DB. Idempotent per (application_id, rule_id)."""
+        import json as _json
+
+        recorded_at_raw = event.get("recorded_at")
+        if isinstance(recorded_at_raw, str):
+            try:
+                recorded_at = datetime.fromisoformat(recorded_at_raw)
+            except (ValueError, TypeError):
+                recorded_at = datetime.now(timezone.utc)
+        elif isinstance(recorded_at_raw, datetime):
+            recorded_at = recorded_at_raw
+        else:
+            recorded_at = datetime.now(timezone.utc)
+
+        if record.event_type in ("ComplianceRulePassed", "ComplianceRuleFailed") and record.rule_id:
+            verdict = "PASSED" if record.passed else "FAILED"
+            p = event.get("payload", {})
+            await conn.execute(
+                """INSERT INTO compliance_audit_view (
+                       application_id, rule_id, rule_version, verdict,
+                       failure_reason, regulation_set, evaluated_at,
+                       evidence_hash, recorded_at
+                   ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+                   ON CONFLICT (application_id, rule_id) DO UPDATE SET
+                       verdict        = EXCLUDED.verdict,
+                       failure_reason = EXCLUDED.failure_reason,
+                       evaluated_at   = EXCLUDED.evaluated_at,
+                       recorded_at    = EXCLUDED.recorded_at""",
+                app_id,
+                record.rule_id,
+                p.get("rule_version"),
+                verdict,
+                p.get("failure_reason"),
+                p.get("regulation_set"),
+                record.evaluated_at,
+                p.get("evidence_hash"),
+                recorded_at,
+            )
+
+        elif record.event_type == "ComplianceCheckCompleted":
+            # Save a full snapshot of current state for time-travel queries.
+            snapshot = self.get_current(app_id)
+            gpos = event.get("global_position", 0)
+            state_json = {
+                "rules_passed": list(snapshot.rules_passed),
+                "rules_failed": list(snapshot.rules_failed),
+                "hard_blocked": snapshot.hard_blocked,
+                "verdict": snapshot.verdict,
+            }
+            await conn.execute(
+                """INSERT INTO compliance_audit_snapshots
+                       (application_id, snapshot_at, global_position, state_json)
+                   VALUES ($1,$2,$3,$4)
+                   ON CONFLICT (application_id, snapshot_at) DO NOTHING""",
+                app_id, record.evaluated_at, gpos, _json.dumps(state_json),
+            )
 
     async def truncate(self) -> None:
         self._log.clear()

@@ -82,7 +82,7 @@ class AgentPerformanceLedgerProjection(Projection):
 
     # ── Projection interface ──────────────────────────────────────────────────
 
-    async def handle(self, event: dict) -> None:
+    async def handle(self, event: dict, conn=None) -> None:
         et = event["event_type"]
         p = event.get("payload", {})
         recorded_at = str(event.get("recorded_at", ""))
@@ -172,6 +172,80 @@ class AgentPerformanceLedgerProjection(Projection):
                     # Only attribute to the agent that contributed (simplified: attribute once)
                     row.human_override_count += 1
                     break  # attribute to first matching agent
+
+        if conn is not None:
+            # Upsert any rows that may have been updated by this event.
+            # Check which key was touched (AgentSessionStarted, CreditAnalysisCompleted,
+            # AgentSessionCompleted, DecisionGenerated each update one row).
+            key_touched = None
+            if et == "AgentSessionStarted":
+                agent_id = p.get("agent_id", "")
+                model_version = p.get("model_version", "")
+                if agent_id and model_version:
+                    key_touched = (agent_id, model_version)
+            elif et in ("CreditAnalysisCompleted", "AgentSessionCompleted", "DecisionGenerated"):
+                session_id = p.get("session_id") or p.get("orchestrator_session_id", "")
+                key_touched = self._sessions.get(session_id)
+            elif et == "HumanReviewCompleted" and p.get("override", False):
+                # Attribute to first matched session key (same logic as above)
+                for sid, k in self._sessions.items():
+                    key_touched = k
+                    break
+
+            if key_touched:
+                row = self._rows.get(key_touched)
+                if row:
+                    await self._upsert(row, conn)
+
+    async def _upsert(self, row: "AgentPerformanceRow", conn) -> None:
+        """Idempotent upsert to agent_performance_ledger."""
+        import decimal
+
+        def _d(v):
+            if v is None:
+                return None
+            try:
+                return decimal.Decimal(str(round(v, 6)))
+            except Exception:
+                return None
+
+        from datetime import datetime
+
+        def _ts(v):
+            if v is None:
+                return None
+            if isinstance(v, datetime):
+                return v
+            try:
+                return datetime.fromisoformat(str(v))
+            except (ValueError, TypeError):
+                return None
+
+        await conn.execute(
+            """INSERT INTO agent_performance_ledger (
+                   agent_id, model_version,
+                   analyses_completed, decisions_generated,
+                   avg_confidence_score, avg_duration_ms,
+                   approve_rate, decline_rate, refer_rate, human_override_rate,
+                   first_seen_at, last_seen_at
+               ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+               ON CONFLICT (agent_id, model_version) DO UPDATE SET
+                   analyses_completed   = EXCLUDED.analyses_completed,
+                   decisions_generated  = EXCLUDED.decisions_generated,
+                   avg_confidence_score = EXCLUDED.avg_confidence_score,
+                   avg_duration_ms      = EXCLUDED.avg_duration_ms,
+                   approve_rate         = EXCLUDED.approve_rate,
+                   decline_rate         = EXCLUDED.decline_rate,
+                   refer_rate           = EXCLUDED.refer_rate,
+                   human_override_rate  = EXCLUDED.human_override_rate,
+                   last_seen_at         = EXCLUDED.last_seen_at""",
+            row.agent_id, row.model_version,
+            row.analyses_completed, row.decisions_generated,
+            _d(row.avg_confidence_score), _d(row.avg_duration_ms),
+            _d(row.approve_rate), _d(row.decline_rate),
+            _d(row.refer_rate), _d(row.human_override_rate),
+            _ts(row.first_seen_at), _ts(row.last_seen_at),
+        )
 
     async def truncate(self) -> None:
         self._rows.clear()
