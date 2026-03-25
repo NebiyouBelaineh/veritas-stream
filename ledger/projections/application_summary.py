@@ -187,6 +187,41 @@ class ApplicationSummaryProjection(Projection):
             final_decision_at,
         )
 
+    async def warm_load(self, pool) -> None:
+        """
+        Populate the in-memory dict from the application_summary table.
+
+        Called once at server startup so that previously processed applications
+        are available immediately without replaying the full event stream.
+        The daemon resumes from its checkpoint and handles only new events.
+        """
+        async with pool.acquire() as conn:
+            rows = await conn.fetch(
+                """SELECT application_id, state, applicant_id,
+                          requested_amount_usd, approved_amount_usd,
+                          risk_tier, fraud_score, compliance_status, decision,
+                          agent_sessions_completed, last_event_type,
+                          last_event_at, human_reviewer_id, final_decision_at
+                   FROM application_summary"""
+            )
+        for r in rows:
+            self._rows[r["application_id"]] = ApplicationSummaryRow(
+                application_id=r["application_id"],
+                state=r["state"] or "SUBMITTED",
+                applicant_id=r["applicant_id"],
+                requested_amount_usd=str(r["requested_amount_usd"]) if r["requested_amount_usd"] is not None else None,
+                approved_amount_usd=str(r["approved_amount_usd"]) if r["approved_amount_usd"] is not None else None,
+                risk_tier=r["risk_tier"],
+                fraud_score=float(r["fraud_score"]) if r["fraud_score"] is not None else None,
+                compliance_status=r["compliance_status"],
+                decision=r["decision"],
+                agent_sessions_completed=list(r["agent_sessions_completed"] or []),
+                last_event_type=r["last_event_type"],
+                last_event_at=r["last_event_at"].isoformat() if r["last_event_at"] else None,
+                human_reviewer_id=r["human_reviewer_id"],
+                final_decision_at=r["final_decision_at"].isoformat() if r["final_decision_at"] else None,
+            )
+
     async def truncate(self) -> None:
         self._rows.clear()
 
