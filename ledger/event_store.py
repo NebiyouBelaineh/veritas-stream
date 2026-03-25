@@ -267,6 +267,35 @@ class EventStore:
                 archived_at=row["archived_at"],
             )
 
+    async def save_checkpoint(self, projection_name: str, position: int) -> None:
+        """
+        Persist projection checkpoint to the projection_checkpoints table.
+
+        Precondition: position is (last_processed_global_position + 1), so
+        the default value of 0 maps to "nothing processed yet".
+        """
+        async with self._pool.acquire() as conn:
+            await conn.execute(
+                """INSERT INTO projection_checkpoints(projection_name, last_position, updated_at)
+                   VALUES($1, $2, NOW())
+                   ON CONFLICT(projection_name) DO UPDATE
+                   SET last_position = EXCLUDED.last_position,
+                       updated_at   = NOW()""",
+                projection_name, position,
+            )
+
+    async def load_checkpoint(self, projection_name: str) -> int:
+        """
+        Load last saved checkpoint for projection_name.
+        Returns 0 if no checkpoint exists (maps to last_processed = -1 in the daemon).
+        """
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT last_position FROM projection_checkpoints WHERE projection_name = $1",
+                projection_name,
+            )
+            return row["last_position"] if row else 0
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # UPCASTER REGISTRY — Phase 4

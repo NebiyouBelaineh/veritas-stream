@@ -39,13 +39,46 @@ class ProjectionDaemon:
         store,
         projections: list[Projection],
         max_retry: int = 3,
+        pool=None,
     ) -> None:
         self.store = store
         self.projections: dict[str, Projection] = {p.name: p for p in projections}
         self.max_retry = max_retry
+        self._pool = pool                                # asyncpg Pool for atomic writes
         self._checkpoints: dict[str, int] = {}          # fallback if store has no checkpoints
         self._last_processed_at: dict[str, datetime] = {}
         self._running = False
+
+    # ── Atomic dispatch ───────────────────────────────────────────────────────
+
+    async def _dispatch_atomic(
+        self, name: str, projection: Projection, event: dict, gpos: int
+    ) -> None:
+        """
+        Dispatch one event to one projection and save its checkpoint atomically.
+
+        When a pool is available: projection write + checkpoint update happen in
+        a single PostgreSQL transaction (satisfies the checkpoint transaction rule).
+        When no pool: falls back to in-memory-only updates.
+        """
+        if self._pool is not None:
+            async with self._pool.acquire() as conn:
+                async with conn.transaction():
+                    await projection.handle(event, conn=conn)
+                    await conn.execute(
+                        """INSERT INTO projection_checkpoints
+                               (projection_name, last_position, updated_at)
+                           VALUES ($1, $2, NOW())
+                           ON CONFLICT (projection_name) DO UPDATE
+                           SET last_position = EXCLUDED.last_position,
+                               updated_at    = NOW()""",
+                        f"proj_{name}",
+                        gpos + 1,   # stored as last_processed+1 so default 0 = "nothing yet"
+                    )
+            self._checkpoints[name] = gpos   # keep in-memory cache in sync
+        else:
+            await projection.handle(event)
+            await self._save_checkpoint(name, gpos)
 
     # ── Checkpoint helpers ────────────────────────────────────────────────────
 
@@ -97,7 +130,7 @@ class ProjectionDaemon:
                 last_exc: Exception | None = None
                 for attempt in range(self.max_retry + 1):
                     try:
-                        await projection.handle(event)
+                        await self._dispatch_atomic(name, projection, event, gpos)
                         last_exc = None
                         break
                     except Exception as exc:
@@ -114,9 +147,10 @@ class ProjectionDaemon:
                         "after %d attempts: %s",
                         gpos, name, self.max_retry + 1, last_exc,
                     )
+                    # Advance checkpoint even on failure so bad events never block the daemon.
+                    await self._save_checkpoint(name, gpos)
+                    self._checkpoints[name] = gpos
 
-                # Advance checkpoint regardless (skip bad events, never block)
-                await self._save_checkpoint(name, gpos)
                 recorded_at = event.get("recorded_at")
                 if isinstance(recorded_at, str):
                     try:
