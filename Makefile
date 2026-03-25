@@ -1,8 +1,8 @@
-REPORT_SRC    := docs/reports/veritas-stream-interim-report.md
+REPORT_SRC    := docs/reports/veritas-stream-final-report.md
 COVER         := docs/reports/cover.md
 STYLESHEET    := docs/reports/pdf-style.css
 
-REPORT_OUT    := docs/reports/veritas-stream-interim-report.pdf
+REPORT_OUT    := docs/reports/veritas-stream-final-report.pdf
 
 TMP_RENDERED  := /tmp/vs-report-rendered.md
 TMP_INLINED   := /tmp/vs-report-inlined.md
