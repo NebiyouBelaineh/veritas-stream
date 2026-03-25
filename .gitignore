@@ -232,3 +232,8 @@ cover.md
 
 # VsCode
 .vscode/
+
+# Apex starter
+apex-starter/
+data/
+datagen/
