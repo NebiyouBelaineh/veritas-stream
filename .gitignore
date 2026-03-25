@@ -221,6 +221,10 @@ data/
 # PaperMind-AI
 paperMind-ai/
 
+# Moved to src/ - ignore old root-level locations
+/web/
+/api/
+
 # Doc templates/tools
 docs/reports/inline-images.py
 docs/reports/pdf-style.css
