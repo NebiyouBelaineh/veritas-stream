@@ -123,9 +123,13 @@ CREATE TABLE IF NOT EXISTS compliance_audit_view (
 -- A snapshot is written periodically so that get_compliance_at(id, ts)
 -- can start from the nearest snapshot rather than replaying from position 0.
 CREATE TABLE IF NOT EXISTS compliance_audit_snapshots (
-    application_id  TEXT NOT NULL,
-    snapshot_at     TIMESTAMPTZ NOT NULL,
-    global_position BIGINT NOT NULL,
-    state_json      JSONB NOT NULL,
+    application_id   TEXT NOT NULL,
+    snapshot_at      TIMESTAMPTZ NOT NULL,
+    global_position  BIGINT NOT NULL,
+    state_json       JSONB NOT NULL,
+    snapshot_version INT NOT NULL DEFAULT 1,
     PRIMARY KEY (application_id, snapshot_at)
 );
+COMMENT ON COLUMN compliance_audit_snapshots.snapshot_version IS
+    'Projection logic version. Snapshots with a version lower than the current '
+    'projection version are stale and must be ignored during temporal queries.';

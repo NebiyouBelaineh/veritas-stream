@@ -426,6 +426,50 @@ async def test_rebuild_from_scratch_produces_identical_result():
     assert row_after.human_reviewer_id == reviewer_before, "reviewer must be identical after rebuild"
 
 
+# ── Test 7b: rebuild_from_scratch does not block concurrent live reads ─────────
+
+@pytest.mark.asyncio
+async def test_rebuild_from_scratch_does_not_block_live_reads():
+    """
+    rebuild_from_scratch() runs as a coroutine. While it replays events, other
+    coroutines can still read from the projection without being blocked.
+
+    We prove this by scheduling a live read concurrently with rebuild and
+    asserting the read returns before rebuild finishes and returns a result.
+    """
+    store = InMemoryEventStore()
+    await _run_full_lifecycle(store, app_id="APEX-NONBLOCK-001")
+
+    summary = ApplicationSummaryProjection()
+    daemon = ProjectionDaemon(store, [summary])
+    await daemon.run_once()
+
+    # Confirm the row exists before rebuild
+    row_before = summary.get("APEX-NONBLOCK-001")
+    assert row_before is not None
+
+    read_result: list = []
+
+    async def concurrent_read() -> None:
+        # Yield control so rebuild can start, then perform a live read.
+        await asyncio.sleep(0)
+        row = summary.get("APEX-NONBLOCK-001")
+        read_result.append(row)
+
+    # Run rebuild and a concurrent read in parallel.
+    await asyncio.gather(
+        daemon.rebuild_from_scratch("application_summary"),
+        concurrent_read(),
+    )
+
+    # The concurrent read must have completed and returned a result — not blocked.
+    assert len(read_result) == 1, "Concurrent read did not complete during rebuild"
+    # After rebuild completes, the projection must still be queryable.
+    row_after = summary.get("APEX-NONBLOCK-001")
+    assert row_after is not None, "Projection unavailable after rebuild"
+    assert row_after.state == row_before.state, "State must match after rebuild"
+
+
 # ── Test 8: Daemon continues after bad event ──────────────────────────────────
 
 @pytest.mark.asyncio

@@ -182,22 +182,37 @@ class EventStore:
             return events
 
     async def load_all(
-        self, from_position: int = 0, batch_size: int = 500
+        self,
+        from_position: int = 0,
+        batch_size: int = 500,
+        event_types: list[str] | None = None,
     ) -> AsyncGenerator[dict, None]:
         """
         Async generator yielding all events by global_position.
         Used by the ProjectionDaemon.
 
+        Precondition: none (empty store yields nothing).
+        Guarantee: events yielded in ascending global_position order, never loading
+            all events into memory at once (batch_size controls page size).
         """
         async with self._pool.acquire() as conn:
             pos = from_position
             while True:
-                rows = await conn.fetch(
-                    "SELECT global_position, stream_id, stream_position,"
-                    " event_type, event_version, payload, metadata, recorded_at"
-                    " FROM events WHERE global_position > $1"
-                    " ORDER BY global_position ASC LIMIT $2",
-                    pos, batch_size)
+                if event_types:
+                    rows = await conn.fetch(
+                        "SELECT global_position, stream_id, stream_position,"
+                        " event_type, event_version, payload, metadata, recorded_at"
+                        " FROM events WHERE global_position > $1"
+                        " AND event_type = ANY($3)"
+                        " ORDER BY global_position ASC LIMIT $2",
+                        pos, batch_size, event_types)
+                else:
+                    rows = await conn.fetch(
+                        "SELECT global_position, stream_id, stream_position,"
+                        " event_type, event_version, payload, metadata, recorded_at"
+                        " FROM events WHERE global_position > $1"
+                        " ORDER BY global_position ASC LIMIT $2",
+                        pos, batch_size)
                 if not rows: break
                 for row in rows:
                     e = {**dict(row),
@@ -414,11 +429,15 @@ class InMemoryEventStore:
         return result
 
     async def load_all(
-        self, from_position: int = 0, batch_size: int = 500
+        self,
+        from_position: int = 0,
+        batch_size: int = 500,
+        event_types: list[str] | None = None,
     ):
         for event in self._global:
             if event["global_position"] >= from_position:
-                yield dict(event)
+                if event_types is None or event["event_type"] in event_types:
+                    yield dict(event)
 
     async def get_event(self, event_id) -> dict | None:
         for event in self._global:
@@ -525,10 +544,16 @@ class InMemoryEventStore:
         ]
         return sorted(events, key=lambda e: e["stream_position"])
 
-    async def load_all(self, from_position: int = 0, batch_size: int = 500):
+    async def load_all(
+        self,
+        from_position: int = 0,
+        batch_size: int = 500,
+        event_types: list[str] | None = None,
+    ):
         for e in self._global:
             if e["global_position"] >= from_position:
-                yield e
+                if event_types is None or e["event_type"] in event_types:
+                    yield e
 
     async def get_event(self, event_id: str) -> dict | None:
         for e in self._global:

@@ -25,6 +25,10 @@ dependencies = [
     "fastmcp>=0.9.0",
     # Env / config
     "python-dotenv>=1.0.0,<2.0",
+    "fastapi>=0.135.2",
+    "uvicorn[standard]>=0.42.0",
+    "python-multipart>=0.0.22",
+    "pdfplumber>=0.11.9",
 ]
 
 [project.optional-dependencies]

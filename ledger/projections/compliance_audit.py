@@ -18,6 +18,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
+# Increment this when the projection's apply() logic changes in a way that
+# would produce different output from the same input events. Snapshots with
+# a lower version are stale and must be ignored during temporal queries.
+CURRENT_SNAPSHOT_VERSION = 1
+
 from ledger.projections import Projection
 
 
@@ -161,10 +166,12 @@ class ComplianceAuditViewProjection(Projection):
             }
             await conn.execute(
                 """INSERT INTO compliance_audit_snapshots
-                       (application_id, snapshot_at, global_position, state_json)
-                   VALUES ($1,$2,$3,$4)
+                       (application_id, snapshot_at, global_position, state_json,
+                        snapshot_version)
+                   VALUES ($1,$2,$3,$4,$5)
                    ON CONFLICT (application_id, snapshot_at) DO NOTHING""",
                 app_id, record.evaluated_at, gpos, _json.dumps(state_json),
+                CURRENT_SNAPSHOT_VERSION,
             )
 
     async def truncate(self) -> None:
