@@ -220,3 +220,8 @@ data/
 
 # PaperMind-AI
 # paperMind-ai/
+
+# Doc templates/tools
+docs/reports/inline-images.py
+docs/reports/pdf-style.css
+cover.md
