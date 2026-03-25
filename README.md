@@ -10,11 +10,14 @@ The Ledger provides append-only event streams, aggregate replay, cryptographic a
 
 ```mermaid
 flowchart TD
-    Agent([AI Agent / LLM]) -->|MCP Tool call| MCP[MCP Server\nledger/mcp/]
+    Agent([AI Agent / LLM]) -->|MCP Tool call| MCP[MCP Server<br/>ledger/mcp/]
     Agent -->|MCP Resource read| MCP
-    MCP -->|Commands| Handlers[Command Handlers\nledger/commands/handlers.py]
-    MCP -->|Query| Projections[Projections\nledger/projections/]
-    Handlers -->|append| ES[(EventStore\nPostgreSQL / InMemory)]
+    Web[Next.js Dashboard<br/>web/] -->|HTTP REST| API[FastAPI REST API<br/>api/]
+    MCP -->|Commands| Handlers[Command Handlers<br/>ledger/commands/handlers.py]
+    API -->|Commands| Handlers
+    MCP -->|Query| Projections[Projections<br/>ledger/projections/]
+    API -->|Query| Projections
+    Handlers -->|append| ES[(EventStore<br/>PostgreSQL / InMemory)]
     ES -->|load_all| Daemon[ProjectionDaemon]
     Daemon --> AppSummary[ApplicationSummary]
     Daemon --> ComplianceAudit[ComplianceAuditView]
@@ -22,23 +25,36 @@ flowchart TD
     Projections --> AppSummary
     Projections --> ComplianceAudit
     Projections --> AgentPerf
-    Handlers -->|load_stream| Aggregates[Domain Aggregates\nledger/domain/aggregates/]
-    AuditChain[Audit Hash Chain\nledger/integrity/] -->|SHA-256 chain| ES
-    GasTown[Gas Town\nledger/integrity/] -->|reconstruct context| ES
-    Upcasting[Upcasters\nledger/upcasting/] -->|v1→v2 on read| ES
+    Handlers -->|load_stream| Aggregates[Domain Aggregates<br/>ledger/domain/aggregates/]
+    AuditChain[Audit Hash Chain<br/>ledger/integrity/] -->|SHA-256 chain| ES
+    GasTown[Gas Town<br/>ledger/integrity/] -->|reconstruct context| ES
+    Upcasting[Upcasters<br/>ledger/upcasting/] -->|v1→v2 on read| ES
 ```
 
 ---
 
 ## Quick Start
 
-### 1. Install dependencies (requires Python 3.12)
+### 1. Install dependencies (requires Python 3.12, Node.js 20+)
 
 ```bash
 uv sync
+cd web && bun install && cd ..
 ```
 
-### 2. Start the database
+### 2. Configure environment
+
+```bash
+cp .env.example .env
+# Edit .env and set:
+#   DATABASE_URL          PostgreSQL connection string
+#   ANTHROPIC_API_KEY     Anthropic API key (primary LLM)
+#   GEMINI_API_KEY        Optional: Google Gemini via OpenRouter (fallback)
+#   APPLICANT_REGISTRY_URL  Same DB as DATABASE_URL in the default setup
+#   DOCUMENTS_DIR         Path to uploaded documents (default: ./documents)
+```
+
+### 3. Start the database
 
 ```bash
 docker compose up -d
@@ -46,14 +62,14 @@ docker compose up -d
 
 This starts PostgreSQL on port **5433** (host) mapped to 5432 (container).
 
-### 3. Run database migrations
+### 4. Run database migrations
 
 ```bash
 DATABASE_URL=postgresql://postgres:apex@localhost:5433/apex_ledger \
   uv run psql -U postgres -h localhost -p 5433 -d apex_ledger -f schema.sql
 ```
 
-### 4. Run all tests
+### 5. Run all tests
 
 ```bash
 # In-memory tests (no database required)
@@ -64,7 +80,27 @@ DATABASE_URL=postgresql://postgres:apex@localhost:5433/apex_ledger \
   uv run pytest tests/test_schema.py tests/test_event_store.py -v
 ```
 
-### 5. Run the MCP server
+### 6. Start the full stack (API + web dashboard)
+
+```bash
+make dev
+```
+
+This builds the Next.js app if needed, then starts both services concurrently:
+- FastAPI REST API on **http://localhost:8000** (with live projection daemon)
+- Next.js dashboard on **http://localhost:3000**
+
+To start services individually:
+
+```bash
+# API only
+uv run uvicorn api.main:app --reload --port 8000
+
+# Web only (requires the API to be running)
+cd web && bun start
+```
+
+### 8. Run the MCP server
 
 The server is started by running `scripts/run_pipeline.py` or by embedding the
 server factory in your own script. It binds to `0.0.0.0:8000` (stdio transport
@@ -100,7 +136,7 @@ curl http://localhost:8000/health
 # Expected: {"status":"ok"}
 ```
 
-### 6. Query MCP resources
+### 9. Query MCP resources
 
 Resources are read-side projections. Query them by URI once the server is running:
 
@@ -286,6 +322,24 @@ veritas-stream/
 │       ├── server.py               # create_mcp_server() factory
 │       ├── tools.py                # 8 MCP tools
 │       └── resources.py            # 7 MCP resources
+├── api/
+│   ├── main.py                     # FastAPI app factory with lifespan (daemon startup)
+│   ├── dependencies.py             # Shared FastAPI dependencies (store, daemon, projections)
+│   ├── routers/                    # REST endpoints: applications, agents, compliance, pipeline
+│   ├── models/                     # Pydantic request/response models
+│   └── services/                   # Business logic called by routers
+├── web/
+│   ├── app/                        # Next.js App Router pages
+│   │   ├── applications/           # Application list and detail views
+│   │   ├── compliance/             # Compliance audit dashboard
+│   │   ├── documents/              # Document upload and review
+│   │   ├── analytics/              # Agent performance analytics
+│   │   └── whatif/                 # Counterfactual what-if projector
+│   └── components/                 # Shared React components
+├── scripts/
+│   ├── run_pipeline.py             # End-to-end pipeline runner
+│   ├── rebuild_projections.py      # Rebuild projections from scratch
+│   └── demo_narr05.py              # NARR-05 crash recovery demo
 ├── tests/
 │   ├── test_schema.py
 │   ├── test_aggregates.py
@@ -298,10 +352,11 @@ veritas-stream/
 │   ├── test_gas_town.py            # crash recovery (submission requirement)
 │   └── test_mcp_lifecycle.py       # MCP-only lifecycle (submission requirement)
 ├── what_if/
-│   └── projector.py                # run_what_if(): counterfactual projection (Phase 6)
+│   └── projector.py                # run_what_if(): counterfactual projection
 ├── regulatory/
-│   └── package.py                  # generate_regulatory_package() (Phase 6)
+│   └── package.py                  # generate_regulatory_package()
 ├── schema.sql                      # PostgreSQL DDL (events, event_streams, projections, outbox)
 ├── docker-compose.yml              # PostgreSQL 16 on port 5433
+├── Makefile                        # dev (api+web), pdf (report rendering), clean-pdf
 └── pyproject.toml
 ```

@@ -225,3 +225,6 @@ data/
 docs/reports/inline-images.py
 docs/reports/pdf-style.css
 cover.md
+
+# VsCode
+.vscode/
