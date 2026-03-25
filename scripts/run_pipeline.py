@@ -508,5 +508,20 @@ async def main() -> None:
         await store.close()
 
 
+def _suppress_httpx_cleanup_noise(loop, context):
+    # AsyncHttpxClientWrapper raises AttributeError on aclose() during GC;
+    # suppress the full traceback and show a single terse line instead.
+    exc = context.get("exception")
+    if isinstance(exc, AttributeError) and "_state" in str(exc):
+        print("[pipeline] note: httpx client cleanup warning (harmless)")
+        return
+    loop.default_exception_handler(context)
+
+
 if __name__ == "__main__":
-    asyncio.run(main())
+    loop = asyncio.new_event_loop()
+    loop.set_exception_handler(_suppress_httpx_cleanup_noise)
+    try:
+        loop.run_until_complete(main())
+    finally:
+        loop.close()
