@@ -5,8 +5,6 @@ NARR-05 end-to-end demo: full pipeline for COMP-068, then human override to APPR
 
 Usage:
     uv run python scripts/demo_narr05.py
-
-Completes in < 90 seconds. Writes artifacts/regulatory_package_NARR05.json.
 """
 from __future__ import annotations
 
@@ -347,6 +345,19 @@ async def main() -> None:
 
     # Print event log
     _print_event_log(store, APP_ID)
+
+    # Integrity check
+    from ledger.integrity.audit_chain import run_integrity_check
+    SEP = "=" * 60
+    print(f"\n{SEP}")
+    print("INTEGRITY CHECK — cryptographic hash chain verification")
+    print(SEP)
+    result = await run_integrity_check(store, f"loan-{APP_ID}")
+    print(f"  events_verified : {result['events_verified']}")
+    print(f"  chain_valid     : {result['chain_valid']}")
+    print(f"  integrity_hash  : {result['integrity_hash'][:16]}...")
+    assert result["chain_valid"], "FAIL: hash chain broken"
+    print("PASSED — cryptographic integrity verified.")
 
     # Step 8: Generate regulatory package
     print("[NARR-05] Step 8: Generating regulatory package...")
