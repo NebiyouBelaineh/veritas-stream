@@ -400,8 +400,18 @@ def patch_llm_if_needed(agent):
     return _patch.object(type(agent), "_call_llm", return_value=(text, 100, 50, 0.001))
 
 
+def _suppress_httpx_cleanup_noise(loop, context):
+    exc = context.get("exception")
+    if isinstance(exc, AttributeError) and "_state" in str(exc):
+        return
+    loop.default_exception_handler(context)
+
+
 if __name__ == "__main__":
-    elapsed = asyncio.run(main())
+    loop = asyncio.new_event_loop()
+    loop.set_exception_handler(_suppress_httpx_cleanup_noise)
+    elapsed = loop.run_until_complete(main())
+    loop.close()
     if elapsed > 90:
         print(f"WARNING: Demo took {elapsed:.1f}s (limit: 90s)")
         sys.exit(1)

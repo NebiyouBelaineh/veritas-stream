@@ -57,7 +57,7 @@ async def main():
     # other sees the version has advanced and gets OCC.
     print(SEP)
     print("SCENARIO 1 — two concurrent appends at the same expected_version")
-    print("            Both agents read version 0, both try to append at 0.")
+    print("            Both agents read version 1, both try to append at 1.")
     print("            One wins; the other gets OptimisticConcurrencyError.")
     print(SEP)
 
@@ -145,7 +145,7 @@ async def main():
         print(f"  {et:<35}  v{ver} → v{new_ver}")
 
     final_ver = await store.stream_version(stream_b)
-    assert final_ver == len(event_types) - 1, f"Expected v{len(event_types)-1}, got v{final_ver}"
+    assert final_ver == len(event_types), f"Expected v{len(event_types)}, got v{final_ver}"
 
     # ── Scenario 4: wrong expected_version ────────────────────────────────────
     print()

@@ -1,11 +1,11 @@
 {
   "package_version": "1.0",
   "application_id": "NARR05-COMP068",
-  "generated_at": "2026-03-25T23:37:19.789801",
+  "generated_at": "2026-03-26T03:48:32.123348",
   "streams": {
     "loan-NARR05-COMP068": [
       {
-        "event_id": "3dd462c9-9afb-4acf-a4fb-5cce2f381731",
+        "event_id": "d8c12d54-f78b-4bb5-b23e-8d0634af9e7c",
         "stream_position": 1,
         "event_type": "ApplicationSubmitted",
         "event_version": 1,
@@ -19,12 +19,12 @@
           "contact_email": "cfo@meridian.tech",
           "contact_name": "Maria Chen",
           "application_reference": "REF-NARR05-COMP068",
-          "submitted_at": "2026-03-25T23:37:10.255471"
+          "submitted_at": "2026-03-26T03:48:25.853522"
         },
-        "recorded_at": "2026-03-25T20:37:10.255511+00:00"
+        "recorded_at": "2026-03-26T00:48:25.853584+00:00"
       },
       {
-        "event_id": "0405fe8b-dc7c-45dc-bd9e-a1b54e29c237",
+        "event_id": "62ff8ea7-0ab6-411b-bf99-f19467866788",
         "stream_position": 2,
         "event_type": "DocumentUploaded",
         "event_version": 1,
@@ -38,13 +38,13 @@
           "file_size_bytes": 4096,
           "file_hash": "hash-income_statement",
           "fiscal_year": 2024,
-          "uploaded_at": "2026-03-25T23:37:10.255562",
+          "uploaded_at": "2026-03-26T03:48:25.853645",
           "uploaded_by": "COMP-068"
         },
-        "recorded_at": "2026-03-25T20:37:10.255572+00:00"
+        "recorded_at": "2026-03-26T00:48:25.853670+00:00"
       },
       {
-        "event_id": "c9b94a27-4040-4c2c-bcc3-b4f42005b478",
+        "event_id": "d5784982-7ed7-499f-ac68-1794e4d2935f",
         "stream_position": 3,
         "event_type": "DocumentUploaded",
         "event_version": 1,
@@ -58,13 +58,13 @@
           "file_size_bytes": 4096,
           "file_hash": "hash-balance_sheet",
           "fiscal_year": 2024,
-          "uploaded_at": "2026-03-25T23:37:10.255599",
+          "uploaded_at": "2026-03-26T03:48:25.853698",
           "uploaded_by": "COMP-068"
         },
-        "recorded_at": "2026-03-25T20:37:10.255609+00:00"
+        "recorded_at": "2026-03-26T00:48:25.853705+00:00"
       },
       {
-        "event_id": "8ee3c90b-b5df-48aa-9d4e-75ed6f54a64a",
+        "event_id": "2b0b812d-5879-4b5f-9566-99c89fcb693e",
         "stream_position": 4,
         "event_type": "DocumentUploaded",
         "event_version": 1,
@@ -78,44 +78,44 @@
           "file_size_bytes": 4096,
           "file_hash": "hash-application_proposal",
           "fiscal_year": 2024,
-          "uploaded_at": "2026-03-25T23:37:10.255621",
+          "uploaded_at": "2026-03-26T03:48:25.853718",
           "uploaded_by": "COMP-068"
         },
-        "recorded_at": "2026-03-25T20:37:10.255626+00:00"
+        "recorded_at": "2026-03-26T00:48:25.853723+00:00"
       },
       {
-        "event_id": "1f6e6951-8d72-4ae0-8735-6a6a62073dd3",
+        "event_id": "8c0408fb-ddce-40b6-aba4-bb9256f3682c",
         "stream_position": 5,
         "event_type": "FraudScreeningRequested",
         "event_version": 1,
         "payload": {
           "application_id": "NARR05-COMP068",
-          "requested_at": "2026-03-25T23:37:10.256287",
+          "requested_at": "2026-03-26T03:48:25.854874",
           "triggered_by_event_id": "seed"
         },
-        "recorded_at": "2026-03-25T20:37:10.256291+00:00"
+        "recorded_at": "2026-03-26T00:48:25.854879+00:00"
       },
       {
-        "event_id": "6e13a419-ff59-4350-9411-b94bd815439c",
+        "event_id": "44c5285e-e573-4fe4-a38c-b4a2e64fefb1",
         "stream_position": 6,
         "event_type": "FraudScreeningRequested",
         "event_version": 1,
         "payload": {
           "application_id": "NARR05-COMP068",
-          "requested_at": "2026-03-25T23:37:12.471976",
-          "triggered_by_event_id": "sess-cre-42f17e5d"
+          "requested_at": "2026-03-26T03:48:28.226183",
+          "triggered_by_event_id": "sess-cre-0f0baa34"
         },
-        "recorded_at": "2026-03-25T20:37:12.472022+00:00"
+        "recorded_at": "2026-03-26T00:48:28.226244+00:00"
       },
       {
-        "event_id": "ebc4327e-4f15-490a-b774-dc7f99764a1f",
+        "event_id": "0207bce3-dea3-4b6c-a655-cfa5bdfae157",
         "stream_position": 7,
         "event_type": "ComplianceCheckRequested",
         "event_version": 1,
         "payload": {
           "application_id": "NARR05-COMP068",
-          "requested_at": "2026-03-25T23:37:16.057199",
-          "triggered_by_event_id": "sess-fra-75edfa3e",
+          "requested_at": "2026-03-26T03:48:31.478972",
+          "triggered_by_event_id": "sess-fra-0d4eb268",
           "regulation_set_version": "2026-Q1",
           "rules_to_evaluate": [
             "REG-001",
@@ -126,64 +126,64 @@
             "REG-006"
           ]
         },
-        "recorded_at": "2026-03-25T20:37:16.057251+00:00"
+        "recorded_at": "2026-03-26T00:48:31.479030+00:00"
       },
       {
-        "event_id": "d5068b13-a99c-4862-8349-8336f428985a",
+        "event_id": "69fc61ff-4f49-48d9-b3b4-cbef3733a89d",
         "stream_position": 8,
         "event_type": "DecisionRequested",
         "event_version": 1,
         "payload": {
           "application_id": "NARR05-COMP068",
-          "requested_at": "2026-03-25T23:37:16.105604",
+          "requested_at": "2026-03-26T03:48:31.536974",
           "all_analyses_complete": true,
-          "triggered_by_event_id": "sess-com-7ebccb4d"
+          "triggered_by_event_id": "sess-com-905e7854"
         },
-        "recorded_at": "2026-03-25T20:37:16.105677+00:00"
+        "recorded_at": "2026-03-26T00:48:31.537032+00:00"
       },
       {
-        "event_id": "ff5c578e-d531-45cf-aaab-ef6732ba84cc",
+        "event_id": "7b976fbf-2e2e-42cf-81c5-024deb107647",
         "stream_position": 9,
         "event_type": "DecisionGenerated",
         "event_version": 2,
         "payload": {
           "application_id": "NARR05-COMP068",
-          "orchestrator_session_id": "sess-dec-df7da808",
+          "orchestrator_session_id": "sess-dec-d8262c43",
           "recommendation": "REFER",
           "confidence": 0.7,
           "approved_amount_usd": null,
           "conditions": [],
-          "executive_summary": "The applicant shows strong current financials, but the lack of historical data and a medium fraud risk necessitates further review. While credit analysis suggests a potential approval of $875,000, the fraud flag raises concerns that override the credit strength. Compliance has cleared the application from any hard blocks.",
+          "executive_summary": "The applicant demonstrates strong current year financials with a healthy EBITDA and strong equity, supporting a potential credit limit of $875,000. However, the lack of historical financial data and prior loan history introduces a medium credit risk. Concurrently, fraud screening has identified anomalies resulting in a medium risk score, recommending a flag for review. Compliance checks passed successfully.",
           "key_risks": [],
           "contributing_sessions": [
-            "sess-cre-42f17e5d",
-            "sess-fra-75edfa3e",
-            "sess-com-7ebccb4d"
+            "sess-cre-0f0baa34",
+            "sess-fra-0d4eb268",
+            "sess-com-905e7854"
           ],
           "model_versions": {
-            "credit_model": "sess-cre-42f17e5d",
-            "fraud_model": "sess-fra-75edfa3e"
+            "credit_model": "sess-cre-0f0baa34",
+            "fraud_model": "sess-fra-0d4eb268"
           },
-          "generated_at": "2026-03-25T23:37:19.785808"
+          "generated_at": "2026-03-26T03:48:32.110838"
         },
-        "recorded_at": "2026-03-25T20:37:19.785894+00:00"
+        "recorded_at": "2026-03-26T00:48:32.111114+00:00"
       },
       {
-        "event_id": "e57773d8-aa69-4bb6-876f-58d8c3349056",
+        "event_id": "45c1f6e6-99c1-4c21-a15b-fa30df3943c2",
         "stream_position": 10,
         "event_type": "HumanReviewRequested",
         "event_version": 1,
         "payload": {
           "application_id": "NARR05-COMP068",
           "reason": "Automated referral: ['confidence threshold not met']",
-          "decision_event_id": "sess-dec-df7da808",
+          "decision_event_id": "sess-dec-d8262c43",
           "assigned_to": null,
-          "requested_at": "2026-03-25T23:37:19.785940"
+          "requested_at": "2026-03-26T03:48:32.111207"
         },
-        "recorded_at": "2026-03-25T20:37:19.785993+00:00"
+        "recorded_at": "2026-03-26T00:48:32.111298+00:00"
       },
       {
-        "event_id": "30303f43-b207-4758-ac75-fb166c7779bf",
+        "event_id": "51fb0999-8f3f-4ea4-90b8-c0fa4f841abd",
         "stream_position": 11,
         "event_type": "HumanReviewCompleted",
         "event_version": 1,
@@ -194,12 +194,12 @@
           "original_recommendation": "REFER",
           "final_decision": "APPROVE",
           "override_reason": "Strong management team and sector growth justify exception approval.",
-          "reviewed_at": "2026-03-25T20:37:19.788838+00:00"
+          "reviewed_at": "2026-03-26T00:48:32.117883+00:00"
         },
-        "recorded_at": "2026-03-25T20:37:19.788850+00:00"
+        "recorded_at": "2026-03-26T00:48:32.117910+00:00"
       },
       {
-        "event_id": "9fe19985-5192-477d-9f1f-2b815afe08ee",
+        "event_id": "d7307fcd-a1f2-48e6-8602-d7cb7453346c",
         "stream_position": 12,
         "event_type": "ApplicationApproved",
         "event_version": 1,
@@ -213,15 +213,15 @@
             "Personal guarantee required"
           ],
           "approved_by": "LO-Sarah-Chen",
-          "effective_date": "2026-03-25",
-          "approved_at": "2026-03-25T23:37:19.788895"
+          "effective_date": "2026-03-26",
+          "approved_at": "2026-03-26T03:48:32.118031"
         },
-        "recorded_at": "2026-03-25T20:37:19.788900+00:00"
+        "recorded_at": "2026-03-26T00:48:32.118046+00:00"
       }
     ],
     "docpkg-NARR05-COMP068": [
       {
-        "event_id": "42a0687c-6cf5-451c-a770-1435e3718bd3",
+        "event_id": "15e04d82-98c4-400c-9e76-022a30cba7ab",
         "stream_position": 1,
         "event_type": "ExtractionStarted",
         "event_version": 1,
@@ -231,12 +231,12 @@
           "document_type": "income_statement",
           "pipeline_version": "papermind-1.0",
           "extraction_model": "fast_text",
-          "started_at": "2026-03-25T23:37:10.255682"
+          "started_at": "2026-03-26T03:48:25.853775"
         },
-        "recorded_at": "2026-03-25T20:37:10.255816+00:00"
+        "recorded_at": "2026-03-26T00:48:25.854258+00:00"
       },
       {
-        "event_id": "d83cec96-15a7-4dac-a807-93965c2b3d30",
+        "event_id": "6d4fe017-c605-4758-9c90-58ad44b72958",
         "stream_position": 2,
         "event_type": "ExtractionCompleted",
         "event_version": 1,
@@ -289,12 +289,12 @@
           "raw_text_length": 5000,
           "tables_extracted": 3,
           "processing_ms": 800,
-          "completed_at": "2026-03-25T23:37:10.255980"
+          "completed_at": "2026-03-26T03:48:25.854481"
         },
-        "recorded_at": "2026-03-25T20:37:10.256153+00:00"
+        "recorded_at": "2026-03-26T00:48:25.854716+00:00"
       },
       {
-        "event_id": "544505df-2394-403c-b579-82ecb450db7b",
+        "event_id": "510fb81c-fd99-4442-8809-f00c21be03c5",
         "stream_position": 3,
         "event_type": "ExtractionStarted",
         "event_version": 1,
@@ -304,12 +304,12 @@
           "document_type": "balance_sheet",
           "pipeline_version": "papermind-1.0",
           "extraction_model": "fast_text",
-          "started_at": "2026-03-25T23:37:10.256180"
+          "started_at": "2026-03-26T03:48:25.854748"
         },
-        "recorded_at": "2026-03-25T20:37:10.256209+00:00"
+        "recorded_at": "2026-03-26T00:48:25.854783+00:00"
       },
       {
-        "event_id": "271e7519-8b59-4ed4-8840-bd34406aab5c",
+        "event_id": "061f72a5-d100-48e0-843d-811c738b4855",
         "stream_position": 4,
         "event_type": "ExtractionCompleted",
         "event_version": 1,
@@ -362,153 +362,194 @@
           "raw_text_length": 5000,
           "tables_extracted": 3,
           "processing_ms": 800,
-          "completed_at": "2026-03-25T23:37:10.256240"
+          "completed_at": "2026-03-26T03:48:25.854818"
         },
-        "recorded_at": "2026-03-25T20:37:10.256273+00:00"
+        "recorded_at": "2026-03-26T00:48:25.854859+00:00"
       }
     ],
     "credit-NARR05-COMP068": [
       {
-        "event_id": "ee5cc4af-1d5f-40df-a860-8d540f43cdbb",
+        "event_id": "8d674cc0-4018-4aa7-98ce-8e1eaea6422f",
         "stream_position": 1,
         "event_type": "CreditRecordOpened",
         "event_version": 1,
         "payload": {
           "application_id": "NARR05-COMP068",
           "applicant_id": "COMP-001",
-          "opened_at": "2026-03-25T23:37:10.295749"
+          "opened_at": "2026-03-26T03:48:25.907133"
         },
-        "recorded_at": "2026-03-25T20:37:10.295804+00:00"
+        "recorded_at": "2026-03-26T00:48:25.907192+00:00"
       },
       {
-        "event_id": "c5a5f1c9-2483-4787-8979-45097b75c4f8",
+        "event_id": "cc3dbb64-cb4e-467c-a0f9-c25b6798bfe5",
         "stream_position": 2,
         "event_type": "HistoricalProfileConsumed",
         "event_version": 1,
         "payload": {
           "application_id": "NARR05-COMP068",
-          "session_id": "sess-cre-42f17e5d",
+          "session_id": "sess-cre-0f0baa34",
           "fiscal_years_loaded": [],
           "has_prior_loans": false,
           "has_defaults": false,
           "revenue_trajectory": "STABLE",
           "data_hash": "8eb9960548f4d9c6",
-          "consumed_at": "2026-03-25T23:37:10.297377"
+          "consumed_at": "2026-03-26T03:48:25.908843"
         },
-        "recorded_at": "2026-03-25T20:37:10.297445+00:00"
+        "recorded_at": "2026-03-26T00:48:25.908971+00:00"
       },
       {
-        "event_id": "9af84a2e-8a9c-4aed-a44e-6b4b1b4ff4fd",
+        "event_id": "23897b51-4445-47c5-893e-2112e6c5d30d",
         "stream_position": 3,
         "event_type": "ExtractedFactsConsumed",
         "event_version": 1,
         "payload": {
           "application_id": "NARR05-COMP068",
-          "session_id": "sess-cre-42f17e5d",
+          "session_id": "sess-cre-0f0baa34",
           "document_ids_consumed": [
             "doc-income_statement-NARR05-COMP068",
             "doc-balance_sheet-NARR05-COMP068"
           ],
           "facts_summary": "revenue=2500000, net_income=300000",
           "quality_flags_present": false,
-          "consumed_at": "2026-03-25T23:37:10.299125"
+          "consumed_at": "2026-03-26T03:48:25.911716"
         },
-        "recorded_at": "2026-03-25T20:37:10.299182+00:00"
+        "recorded_at": "2026-03-26T00:48:25.911787+00:00"
       },
       {
-        "event_id": "1946c1e3-e2d3-4d57-8e10-c9c456521360",
+        "event_id": "64d98c0b-8ae0-4280-8eee-606a3044e87d",
         "stream_position": 4,
         "event_type": "CreditAnalysisCompleted",
         "event_version": 2,
         "payload": {
           "application_id": "NARR05-COMP068",
-          "session_id": "sess-cre-42f17e5d",
+          "session_id": "sess-cre-0f0baa34",
           "decision": {
             "risk_tier": "MEDIUM",
             "recommended_limit_usd": "875000",
-            "confidence": 0.8,
-            "rationale": "The applicant demonstrates strong current year financials with a healthy EBITDA and strong equity. However, the absence of historical financial data introduces an element of uncertainty regarding past performance and consistency. The recommended limit is capped by the maximum loan-to-revenue ratio of 0.35.",
+            "confidence": 0.85,
+            "rationale": "The applicant shows strong current year financials with a healthy EBITDA and strong equity. However, the absence of historical financial data and prior loan history introduces an element of uncertainty. The recommended limit is capped by the maximum loan-to-revenue ratio of 0.35.",
             "key_concerns": [
-              "No historical financial data available to assess trend and stability"
+              "No historical financial data available",
+              "No prior loan history on record"
             ],
             "data_quality_caveats": [],
             "policy_overrides_applied": []
           },
           "model_version": "claude-haiku-4-5-20251001",
-          "model_deployment_id": "dep-46f7894c",
-          "input_data_hash": "445a3387e8466ff6",
-          "analysis_duration_ms": 2200,
+          "model_deployment_id": "dep-0353838a",
+          "input_data_hash": "5d424e441fc17c7a",
+          "analysis_duration_ms": 2345,
           "regulatory_basis": [],
-          "completed_at": "2026-03-25T23:37:12.471859"
+          "completed_at": "2026-03-26T03:48:28.226018"
         },
-        "recorded_at": "2026-03-25T20:37:12.471938+00:00"
+        "recorded_at": "2026-03-26T00:48:28.226134+00:00"
       }
     ],
     "fraud-NARR05-COMP068": [
       {
-        "event_id": "26bfb630-8729-4f0e-8fbc-8ad1afc8de34",
+        "event_id": "b2cce197-ceb0-4741-89ba-275f9ecfe47d",
         "stream_position": 1,
         "event_type": "FraudScreeningInitiated",
         "event_version": 1,
         "payload": {
           "application_id": "NARR05-COMP068",
-          "session_id": "sess-fra-75edfa3e",
+          "session_id": "sess-fra-0d4eb268",
           "screening_model_version": "fraud-model-v1.0",
-          "initiated_at": "2026-03-25T23:37:12.492091"
+          "initiated_at": "2026-03-26T03:48:28.249790"
         },
-        "recorded_at": "2026-03-25T20:37:12.492168+00:00"
+        "recorded_at": "2026-03-26T00:48:28.249912+00:00"
       },
       {
-        "event_id": "b7d7adc9-bec7-4fd5-b284-df1893402beb",
+        "event_id": "ed8fcdf0-9cbd-4b2c-ab36-951c51460a3d",
         "stream_position": 2,
         "event_type": "FraudAnomalyDetected",
         "event_version": 1,
         "payload": {
           "application_id": "NARR05-COMP068",
-          "session_id": "sess-fra-75edfa3e",
+          "session_id": "sess-fra-0d4eb268",
           "anomaly": {
             "anomaly_type": "revenue_discrepancy",
-            "description": "The current year submitted documents report identical revenue, EBITDA, and net income figures as the previous year (FY2023) from the historical registry, despite the company's stated 'GROWTH' trajectory. This is highly unusual for a growth company.",
-            "severity": "HIGH",
-            "evidence": "Current year: Revenue=$2,500,000, EBITDA=$600,000, Net Income=$300,000. FY2023 Historical: Revenue=$2,500,000, EBITDA=$600,000, Net=$300,000.",
+            "description": "The current year's revenue matches exactly with the previous year's entry in the registry, which is unusual for a 'GROWTH' trajectory company and could indicate a copy-paste error or lack of updated figures.",
+            "severity": "MEDIUM",
+            "evidence": "Current year 'total_revenue': $2,500,000; FY2023 Registry Revenue: $2,500,000",
             "affected_fields": [
-              "total_revenue",
-              "ebitda",
+              "total_revenue"
+            ]
+          },
+          "detected_at": "2026-03-26T03:48:31.474186"
+        },
+        "recorded_at": "2026-03-26T00:48:31.474282+00:00"
+      },
+      {
+        "event_id": "2b8c8864-b935-452e-adfd-2d33c6c88fc2",
+        "stream_position": 3,
+        "event_type": "FraudAnomalyDetected",
+        "event_version": 1,
+        "payload": {
+          "application_id": "NARR05-COMP068",
+          "session_id": "sess-fra-0d4eb268",
+          "anomaly": {
+            "anomaly_type": "revenue_discrepancy",
+            "description": "The current year's EBITDA matches exactly with the previous year's entry in the registry, which is unusual for a 'GROWTH' trajectory company and could indicate a copy-paste error or lack of updated figures, especially when other profit metrics (gross profit, operating income) have different values.",
+            "severity": "MEDIUM",
+            "evidence": "Current year 'ebitda': $600,000; FY2023 Registry EBITDA: $600,000",
+            "affected_fields": [
+              "ebitda"
+            ]
+          },
+          "detected_at": "2026-03-26T03:48:31.474330"
+        },
+        "recorded_at": "2026-03-26T00:48:31.474365+00:00"
+      },
+      {
+        "event_id": "86ad799a-76df-4c79-9097-c52bf685e1f0",
+        "stream_position": 4,
+        "event_type": "FraudAnomalyDetected",
+        "event_version": 1,
+        "payload": {
+          "application_id": "NARR05-COMP068",
+          "session_id": "sess-fra-0d4eb268",
+          "anomaly": {
+            "anomaly_type": "revenue_discrepancy",
+            "description": "The current year's net income matches exactly with the previous year's entry in the registry, which is unusual for a 'GROWTH' trajectory company and could indicate a copy-paste error or lack of updated figures.",
+            "severity": "MEDIUM",
+            "evidence": "Current year 'net_income': $300,000; FY2023 Registry Net: $300,000",
+            "affected_fields": [
               "net_income"
             ]
           },
-          "detected_at": "2026-03-25T23:37:16.053091"
+          "detected_at": "2026-03-26T03:48:31.474388"
         },
-        "recorded_at": "2026-03-25T20:37:16.053197+00:00"
+        "recorded_at": "2026-03-26T00:48:31.474413+00:00"
       },
       {
-        "event_id": "0d4c0847-f007-40e4-b282-2149df5931f0",
-        "stream_position": 3,
+        "event_id": "2c63ca18-238d-4fe0-a895-92cd9fc7a43b",
+        "stream_position": 5,
         "event_type": "FraudScreeningCompleted",
         "event_version": 1,
         "payload": {
           "application_id": "NARR05-COMP068",
-          "session_id": "sess-fra-75edfa3e",
-          "fraud_score": 0.55,
+          "session_id": "sess-fra-0d4eb268",
+          "fraud_score": 0.35,
           "risk_level": "MEDIUM",
-          "anomalies_found": 1,
+          "anomalies_found": 3,
           "recommendation": "FLAG_FOR_REVIEW",
           "screening_model_version": "fraud-model-v1.0",
           "input_data_hash": "35870e2e117a482e",
-          "completed_at": "2026-03-25T23:37:16.057084"
+          "completed_at": "2026-03-26T03:48:31.478830"
         },
-        "recorded_at": "2026-03-25T20:37:16.057159+00:00"
+        "recorded_at": "2026-03-26T00:48:31.478928+00:00"
       }
     ],
     "compliance-NARR05-COMP068": [
       {
-        "event_id": "c47dad26-5685-4a18-b4c3-0936b12da313",
+        "event_id": "d33de60b-2fea-4f81-93b2-afae3bf590aa",
         "stream_position": 1,
         "event_type": "ComplianceCheckInitiated",
         "event_version": 1,
         "payload": {
           "application_id": "NARR05-COMP068",
-          "session_id": "sess-com-7ebccb4d",
+          "session_id": "sess-com-905e7854",
           "regulation_set_version": "2026-Q1",
           "rules_to_evaluate": [
             "REG-001",
@@ -518,128 +559,128 @@
             "REG-005",
             "REG-006"
           ],
-          "initiated_at": "2026-03-25T23:37:16.079492"
+          "initiated_at": "2026-03-26T03:48:31.502721"
         },
-        "recorded_at": "2026-03-25T20:37:16.079583+00:00"
+        "recorded_at": "2026-03-26T00:48:31.502830+00:00"
       },
       {
-        "event_id": "c356d92c-4829-4263-9251-14b3fa206959",
+        "event_id": "34c783cc-18bf-42b6-a57d-7388b9f4cc80",
         "stream_position": 2,
         "event_type": "ComplianceRulePassed",
         "event_version": 1,
         "payload": {
           "application_id": "NARR05-COMP068",
-          "session_id": "sess-com-7ebccb4d",
+          "session_id": "sess-com-905e7854",
           "rule_id": "REG-001",
           "rule_name": "Bank Secrecy Act (BSA) Check",
           "rule_version": "2026-Q1-v1",
           "evidence_hash": "41a27d79a2d6fca8",
           "evaluation_notes": "Rule REG-001 passed.",
-          "evaluated_at": "2026-03-25T23:37:16.082880"
+          "evaluated_at": "2026-03-26T03:48:31.505491"
         },
-        "recorded_at": "2026-03-25T20:37:16.082979+00:00"
+        "recorded_at": "2026-03-26T00:48:31.505564+00:00"
       },
       {
-        "event_id": "9edad6b5-1d73-45c7-a972-a098c119427c",
+        "event_id": "fbea6e40-0d28-4666-b0d9-3168f3c2e19a",
         "stream_position": 3,
         "event_type": "ComplianceRulePassed",
         "event_version": 1,
         "payload": {
           "application_id": "NARR05-COMP068",
-          "session_id": "sess-com-7ebccb4d",
+          "session_id": "sess-com-905e7854",
           "rule_id": "REG-002",
           "rule_name": "OFAC Sanctions Screening",
           "rule_version": "2026-Q1-v1",
           "evidence_hash": "d602609998abb1d1",
           "evaluation_notes": "Rule REG-002 passed.",
-          "evaluated_at": "2026-03-25T23:37:16.086573"
+          "evaluated_at": "2026-03-26T03:48:31.511008"
         },
-        "recorded_at": "2026-03-25T20:37:16.086646+00:00"
+        "recorded_at": "2026-03-26T00:48:31.511094+00:00"
       },
       {
-        "event_id": "a0af5cbb-4feb-4347-a126-10b9e7a59673",
+        "event_id": "20720bbd-fcb1-4219-8478-bd85e0f5ac48",
         "stream_position": 4,
         "event_type": "ComplianceRulePassed",
         "event_version": 1,
         "payload": {
           "application_id": "NARR05-COMP068",
-          "session_id": "sess-com-7ebccb4d",
+          "session_id": "sess-com-905e7854",
           "rule_id": "REG-003",
           "rule_name": "Jurisdiction Lending Eligibility",
           "rule_version": "2026-Q1-v1",
           "evidence_hash": "f43f23fdb402b6ef",
           "evaluation_notes": "Rule REG-003 passed.",
-          "evaluated_at": "2026-03-25T23:37:16.090741"
+          "evaluated_at": "2026-03-26T03:48:31.516186"
         },
-        "recorded_at": "2026-03-25T20:37:16.090821+00:00"
+        "recorded_at": "2026-03-26T00:48:31.516279+00:00"
       },
       {
-        "event_id": "ac128b14-1796-48c9-8d6d-d964d067c47c",
+        "event_id": "69801c6e-b02e-42ef-ba4c-19163931694b",
         "stream_position": 5,
         "event_type": "ComplianceRulePassed",
         "event_version": 1,
         "payload": {
           "application_id": "NARR05-COMP068",
-          "session_id": "sess-com-7ebccb4d",
+          "session_id": "sess-com-905e7854",
           "rule_id": "REG-004",
           "rule_name": "Legal Entity Type Eligibility",
           "rule_version": "2026-Q1-v1",
           "evidence_hash": "17389e139e33e1fa",
           "evaluation_notes": "Rule REG-004 passed.",
-          "evaluated_at": "2026-03-25T23:37:16.094050"
+          "evaluated_at": "2026-03-26T03:48:31.522968"
         },
-        "recorded_at": "2026-03-25T20:37:16.094116+00:00"
+        "recorded_at": "2026-03-26T00:48:31.523136+00:00"
       },
       {
-        "event_id": "7d0b4058-bb6d-4ecd-91e1-b670b05c5eed",
+        "event_id": "af554ef5-9cfa-42b6-9b12-6115b6404154",
         "stream_position": 6,
         "event_type": "ComplianceRulePassed",
         "event_version": 1,
         "payload": {
           "application_id": "NARR05-COMP068",
-          "session_id": "sess-com-7ebccb4d",
+          "session_id": "sess-com-905e7854",
           "rule_id": "REG-005",
           "rule_name": "Minimum Operating History",
           "rule_version": "2026-Q1-v1",
           "evidence_hash": "8e2b78591c6a4c56",
           "evaluation_notes": "Rule REG-005 passed.",
-          "evaluated_at": "2026-03-25T23:37:16.097683"
+          "evaluated_at": "2026-03-26T03:48:31.527317"
         },
-        "recorded_at": "2026-03-25T20:37:16.097762+00:00"
+        "recorded_at": "2026-03-26T00:48:31.527399+00:00"
       },
       {
-        "event_id": "d843aba7-e038-40b3-8f96-1e5e6e9a7bda",
+        "event_id": "ad3c646e-9d9e-4a0b-a927-987201396b20",
         "stream_position": 7,
         "event_type": "ComplianceRuleNoted",
         "event_version": 1,
         "payload": {
           "application_id": "NARR05-COMP068",
-          "session_id": "sess-com-7ebccb4d",
+          "session_id": "sess-com-905e7854",
           "rule_id": "REG-006",
           "rule_name": "CRA Community Reinvestment",
           "note_type": "CRA_CONSIDERATION",
           "note_text": "Jurisdiction qualifies for Community Reinvestment Act consideration.",
-          "evaluated_at": "2026-03-25T23:37:16.101756"
+          "evaluated_at": "2026-03-26T03:48:31.531927"
         },
-        "recorded_at": "2026-03-25T20:37:16.101826+00:00"
+        "recorded_at": "2026-03-26T00:48:31.532051+00:00"
       },
       {
-        "event_id": "d65e59cc-6db0-4ca9-9b68-dd42bfca730d",
+        "event_id": "4d2dd946-11c4-410d-b0b5-70dd5f43849e",
         "stream_position": 8,
         "event_type": "ComplianceCheckCompleted",
         "event_version": 1,
         "payload": {
           "application_id": "NARR05-COMP068",
-          "session_id": "sess-com-7ebccb4d",
+          "session_id": "sess-com-905e7854",
           "rules_evaluated": 6,
           "rules_passed": 5,
           "rules_failed": 0,
           "rules_noted": 1,
           "has_hard_block": false,
           "overall_verdict": "CLEAR",
-          "completed_at": "2026-03-25T23:37:16.105420"
+          "completed_at": "2026-03-26T03:48:31.536815"
         },
-        "recorded_at": "2026-03-25T20:37:16.105544+00:00"
+        "recorded_at": "2026-03-26T00:48:31.536928+00:00"
       }
     ]
   },
@@ -648,6 +689,6 @@
     "final_outcome": "APPROVED",
     "approved_amount_usd": "750000",
     "compliance_verdict": "CLEAR",
-    "total_events": 83
+    "total_events": 86
   }
 }

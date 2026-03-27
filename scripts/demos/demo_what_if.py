@@ -185,9 +185,24 @@ async def seed_application(store, app_id: str):
             fraud_score=0.05, risk_level="LOW",
             recommendation="PROCEED",
             screening_model_version="google/gemini-2.5-flash",
+            # Declares causal dependency on credit: fraud screening was triggered
+            # because CreditAnalysisCompleted initiated the pipeline stage.
+            # This extends the causal chain so that branching at CreditAnalysisCompleted
+            # also transitively suppresses FraudScreeningCompleted (and DecisionGenerated).
+            causation_id=credit_event_id,
         ), store
     )
     print("  FraudScreeningCompleted written. (fraud_score=0.05)")
+
+    # Capture the FraudScreeningCompleted event_id so DecisionGenerated can
+    # declare a causal dependency on it. This means branching at either
+    # CreditAnalysisCompleted or FraudScreeningCompleted will transitively
+    # suppress DecisionGenerated via the chain: Credit → Fraud → Decision.
+    loan_events_after_fraud = await store.load_stream(f"loan-{app_id}")
+    fraud_event_id = str(next(
+        e["event_id"] for e in loan_events_after_fraud
+        if e["event_type"] == "FraudScreeningCompleted"
+    ))
 
     for rule_id, rule_name in [("AML-001", "AML"), ("KYC-001", "KYC")]:
         await handle_compliance_check(
@@ -238,11 +253,13 @@ async def seed_application(store, app_id: str):
             executive_summary="Solid revenue, acceptable risk.",
             approved_amount_usd=Decimal("500000"),
             required_compliance_rules={"AML-001", "KYC-001"},
-            # Declares causal dependency: DecisionGenerated was produced because
-            # CreditAnalysisCompleted supplied the risk tier. When the what-if
-            # projector branches at CreditAnalysisCompleted it will suppress
-            # DecisionGenerated (and anything further down the chain).
-            causation_id=credit_event_id,
+            # Declares causal dependency on fraud: the orchestrator's decision
+            # depends on the fraud screening outcome. Combined with fraud's own
+            # causation_id pointing to credit, the chain is:
+            #   CreditAnalysisCompleted → FraudScreeningCompleted → DecisionGenerated
+            # Branching at either credit OR fraud will transitively suppress
+            # DecisionGenerated (and ApplicationApproved) via the chain.
+            causation_id=fraud_event_id,
         ), store
     )
     print("  DecisionGenerated written. (APPROVE, $500,000)")
