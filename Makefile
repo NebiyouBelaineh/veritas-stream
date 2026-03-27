@@ -10,21 +10,29 @@ TMP_COMBINED  := /tmp/vs-report-combined.md
 
 WEB_BUILD_DIR := src/web/.next/BUILD_ID
 
-.PHONY: dev build-web pdf clean-pdf pdf-file
+.PHONY: dev prod build-web pdf clean-pdf pdf-file
 
 ## build-web: build the Next.js web app
 build-web:
 	@echo "→ Building web..."
 	cd src/web && bun run build
 
-## dev: run api and web concurrently (builds web first if .next is missing)
+## dev: run api and web in development mode (hot-reload, no build required)
 dev:
+	@echo "→ Starting API and web in dev mode..."
+	@trap 'kill 0' INT; \
+		PYTHONPATH=src uv run uvicorn api.main:app --reload --port 8000 & \
+		cd src/web && bun run dev & \
+		wait
+
+## prod: run api and web in production mode (builds web first if not already built)
+prod:
 	@if [ ! -f $(WEB_BUILD_DIR) ]; then \
 		$(MAKE) build-web; \
 	fi
-	@echo "→ Starting API and web..."
+	@echo "→ Starting API and web in production mode..."
 	@trap 'kill 0' INT; \
-		PYTHONPATH=src uv run uvicorn api.main:app --reload --port 8000 & \
+		PYTHONPATH=src uv run uvicorn api.main:app --port 8000 & \
 		cd src/web && bun start & \
 		wait
 

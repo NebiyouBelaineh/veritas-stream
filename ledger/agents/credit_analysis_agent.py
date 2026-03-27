@@ -161,14 +161,21 @@ class CreditAnalysisAgent(BaseApexAgent):
         app_id = state["application_id"]
         credit_stream = f"credit-{app_id}"
 
-        event = CreditRecordOpened(
-            application_id=app_id,
-            applicant_id=state["applicant_id"],
-            opened_at=datetime.now(),
-        ).to_store_dict()
+        # On retry (prior session failed after writing CreditRecordOpened), skip
+        # the open to avoid a duplicate event and an OCC error on expected_version=-1.
+        try:
+            existing = await self.store.load_stream(credit_stream)
+            already_opened = any(e.get("event_type") == "CreditRecordOpened" for e in existing)
+        except Exception:
+            already_opened = False
 
-        # New stream — expected_version = -1
-        await self.store.append(credit_stream, [event], expected_version=-1)
+        if not already_opened:
+            event = CreditRecordOpened(
+                application_id=app_id,
+                applicant_id=state["applicant_id"],
+                opened_at=datetime.now(),
+            ).to_store_dict()
+            await self.store.append(credit_stream, [event], expected_version=-1)
 
         ms = int((time.perf_counter() - t) * 1000)
         await self._record_node_execution(
