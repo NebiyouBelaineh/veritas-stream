@@ -11,6 +11,8 @@ requires-python = ">=3.12,<3.13"
 dependencies = [
     # PostgreSQL async driver
     "asyncpg>=0.29.0,<0.30",
+    # Redis async client (includes hiredis C parser via [asyncio] extra)
+    "redis[asyncio]>=5.0.0,<6.0",
     # Claude / Anthropic SDK
     "anthropic>=0.30.0,<0.40",
     # Data validation
