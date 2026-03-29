@@ -57,12 +57,15 @@ class EventStore:
       5. get_event()        — needed for causation chain audit
     """
 
-    def __init__(self, db_url: str, upcaster_registry=None):
+    def __init__(self, db_url: str, upcaster_registry=None, pool=None):
         self.db_url = db_url
         self.upcasters = upcaster_registry
-        self._pool: asyncpg.Pool | None = None
+        self._pool: asyncpg.Pool | None = pool
+        self._owns_pool: bool = (pool is None)
 
     async def connect(self) -> None:
+        if self._pool is not None:
+            return  # pool was injected externally; skip creation
         async def init(conn):
             await conn.set_type_codec(
                 "jsonb", encoder=json.dumps, decoder=json.loads, schema="pg_catalog"
@@ -70,7 +73,8 @@ class EventStore:
         self._pool = await asyncpg.create_pool(self.db_url, min_size=2, max_size=10, init=init)
 
     async def close(self) -> None:
-        if self._pool: await self._pool.close()
+        if self._pool and self._owns_pool:
+            await self._pool.close()
 
     async def stream_version(self, stream_id: str) -> int:
         """
