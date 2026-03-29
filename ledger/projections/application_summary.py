@@ -106,8 +106,12 @@ class ApplicationSummaryProjection(Projection):
         elif et == "HumanReviewCompleted":
             final = p.get("final_decision", "DECLINED")
             row.state = final
+            row.decision = final
             row.human_reviewer_id = p.get("reviewer_id")
             row.final_decision_at = recorded_at
+            if final == "APPROVED" and row.approved_amount_usd is None:
+                # HumanReviewCompleted carries no amount; fall back to requested.
+                row.approved_amount_usd = row.requested_amount_usd
 
         elif et == "ApplicationApproved":
             row.state = "APPROVED"
