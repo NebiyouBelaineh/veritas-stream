@@ -247,6 +247,59 @@ class AgentPerformanceLedgerProjection(Projection):
             _ts(row.first_seen_at), _ts(row.last_seen_at),
         )
 
+    async def warm_load(self, pool) -> None:
+        """
+        Populate in-memory state from agent_performance_ledger table.
+
+        Called once at startup so previously processed data is available without
+        replaying the full event stream. The daemon then handles only new events
+        from its checkpoint forward.
+
+        Raw accumulators (_confidence_sum, _duration_sum_ms, etc.) are
+        reconstructed from the stored averages so incremental updates remain
+        numerically consistent.
+        """
+        async with pool.acquire() as conn:
+            rows = await conn.fetch(
+                """SELECT agent_id, model_version,
+                          analyses_completed, decisions_generated,
+                          avg_confidence_score, avg_duration_ms,
+                          approve_rate, decline_rate, refer_rate, human_override_rate,
+                          first_seen_at, last_seen_at
+                   FROM agent_performance_ledger"""
+            )
+        for r in rows:
+            analyses = r["analyses_completed"] or 0
+            avg_conf = float(r["avg_confidence_score"]) if r["avg_confidence_score"] is not None else None
+            avg_dur = float(r["avg_duration_ms"]) if r["avg_duration_ms"] is not None else None
+            approve_rate = float(r["approve_rate"]) if r["approve_rate"] is not None else None
+            decline_rate = float(r["decline_rate"]) if r["decline_rate"] is not None else None
+            refer_rate = float(r["refer_rate"]) if r["refer_rate"] is not None else None
+
+            row = AgentPerformanceRow(
+                agent_id=r["agent_id"],
+                model_version=r["model_version"],
+                analyses_completed=analyses,
+                decisions_generated=r["decisions_generated"] or 0,
+                first_seen_at=r["first_seen_at"].isoformat() if r["first_seen_at"] else None,
+                last_seen_at=r["last_seen_at"].isoformat() if r["last_seen_at"] else None,
+            )
+            if avg_conf is not None and analyses > 0:
+                row._confidence_sum = avg_conf * analyses
+                row._confidence_count = analyses
+            if avg_dur is not None and analyses > 0:
+                row._duration_sum_ms = int(avg_dur * analyses)
+                row._duration_count = analyses
+            if approve_rate is not None:
+                row.approve_count = round(approve_rate * analyses)
+            if decline_rate is not None:
+                row.decline_count = round(decline_rate * analyses)
+            if refer_rate is not None:
+                row.refer_count = round(refer_rate * analyses)
+                row.review_count = round(refer_rate * analyses)
+
+            self._rows[(r["agent_id"], r["model_version"])] = row
+
     async def truncate(self) -> None:
         self._rows.clear()
         self._sessions.clear()
