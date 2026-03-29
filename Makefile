@@ -10,29 +10,40 @@ TMP_COMBINED  := /tmp/vs-report-combined.md
 
 WEB_BUILD_DIR := src/web/.next/BUILD_ID
 
-.PHONY: dev prod build-web pdf clean-pdf pdf-file
+PM_PYTHON      := paperMind-ai/.venv/bin/python
+PM_PORT        := 7861
+
+.PHONY: dev prod build-web papermind-api pdf clean-pdf pdf-file
 
 ## build-web: build the Next.js web app
 build-web:
 	@echo "→ Building web..."
 	cd src/web && bun run build
 
-## dev: run api and web in development mode (hot-reload, no build required)
+## papermind-api: start the paperMind extraction microservice (port 7861)
+papermind-api:
+	@echo "→ Starting paperMind extraction service on port $(PM_PORT)..."
+	cd paperMind-ai && ../.venv/bin/python -c "import sys; print(sys.version)" 2>/dev/null || true
+	cd paperMind-ai && $(abspath $(PM_PYTHON)) -m uvicorn serve:app --port $(PM_PORT)
+
+## dev: run api, web, and paperMind extraction service in development mode
 dev:
-	@echo "→ Starting API and web in dev mode..."
+	@echo "→ Starting paperMind service, API, and web in dev mode..."
 	@trap 'kill 0' INT; \
-		PYTHONPATH=src uv run uvicorn api.main:app --reload --port 8000 & \
+		cd paperMind-ai && $(abspath $(PM_PYTHON)) -m uvicorn serve:app --port $(PM_PORT) & \
+		PYTHONPATH=src PAPERMIND_API_URL=http://localhost:$(PM_PORT) uv run uvicorn api.main:app --reload --port 8000 & \
 		cd src/web && bun run dev & \
 		wait
 
-## prod: run api and web in production mode (builds web first if not already built)
+## prod: run api, web, and paperMind service in production mode
 prod:
 	@if [ ! -f $(WEB_BUILD_DIR) ]; then \
 		$(MAKE) build-web; \
 	fi
-	@echo "→ Starting API and web in production mode..."
+	@echo "→ Starting paperMind service, API, and web in production mode..."
 	@trap 'kill 0' INT; \
-		PYTHONPATH=src uv run uvicorn api.main:app --port 8000 & \
+		cd paperMind-ai && $(abspath $(PM_PYTHON)) -m uvicorn serve:app --port $(PM_PORT) & \
+		PYTHONPATH=src PAPERMIND_API_URL=http://localhost:$(PM_PORT) uv run uvicorn api.main:app --port 8000 & \
 		cd src/web && bun start & \
 		wait
 
