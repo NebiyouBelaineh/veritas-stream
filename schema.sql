@@ -133,3 +133,19 @@ CREATE TABLE IF NOT EXISTS compliance_audit_snapshots (
 COMMENT ON COLUMN compliance_audit_snapshots.snapshot_version IS
     'Projection logic version. Snapshots with a version lower than the current '
     'projection version are stale and must be ignored during temporal queries.';
+
+-- ─── APPLICANT REGISTRY INDEXES ──────────────────────────────────────────────
+-- The applicant_registry schema and tables are created by datagen/generate_all.py.
+-- These indexes are applied idempotently here so they survive schema.sql re-runs.
+-- They will fail silently if the schema does not yet exist (run datagen first).
+
+CREATE SCHEMA IF NOT EXISTS applicant_registry;
+
+CREATE INDEX IF NOT EXISTS idx_registry_financial_company_year
+    ON applicant_registry.financial_history (company_id, fiscal_year DESC);
+
+CREATE INDEX IF NOT EXISTS idx_registry_flags_company
+    ON applicant_registry.compliance_flags (company_id);
+
+CREATE INDEX IF NOT EXISTS idx_registry_companies_risk_segment
+    ON applicant_registry.companies (risk_segment);
