@@ -174,6 +174,70 @@ class ComplianceAuditViewProjection(Projection):
                 CURRENT_SNAPSHOT_VERSION,
             )
 
+    async def warm_load(self, pool) -> None:
+        """
+        Rebuild self._log from the DB so compliance history is available
+        immediately after server restart without replaying all past events.
+
+        Reads per-rule verdicts from compliance_audit_view, then pins the
+        overall verdict using the latest snapshot per application.
+        """
+        async with pool.acquire() as conn:
+            rule_rows = await conn.fetch(
+                """SELECT application_id, rule_id, verdict, evaluated_at
+                   FROM compliance_audit_view
+                   ORDER BY application_id, evaluated_at"""
+            )
+            for r in rule_rows:
+                app_id = r["application_id"]
+                et = "ComplianceRulePassed" if r["verdict"] == "PASSED" else "ComplianceRuleFailed"
+                evaluated_at = r["evaluated_at"]
+                if evaluated_at.tzinfo is None:
+                    evaluated_at = evaluated_at.replace(tzinfo=timezone.utc)
+                record = ComplianceEventRecord(
+                    event_type=et,
+                    rule_id=r["rule_id"],
+                    rule_name=None,
+                    session_id=None,
+                    passed=(r["verdict"] == "PASSED"),
+                    is_hard_block=False,
+                    overall_verdict=None,
+                    evaluated_at=evaluated_at,
+                )
+                self._log.setdefault(app_id, []).append(record)
+
+            snapshot_rows = await conn.fetch(
+                """SELECT DISTINCT ON (application_id)
+                       application_id, snapshot_at, state_json
+                   FROM compliance_audit_snapshots
+                   WHERE snapshot_version = $1
+                   ORDER BY application_id, snapshot_at DESC""",
+                CURRENT_SNAPSHOT_VERSION,
+            )
+            for r in snapshot_rows:
+                import json as _json
+                app_id = r["application_id"]
+                state = r["state_json"]
+                if isinstance(state, str):
+                    state = _json.loads(state)
+                snapshot_at = r["snapshot_at"]
+                if snapshot_at.tzinfo is None:
+                    snapshot_at = snapshot_at.replace(tzinfo=timezone.utc)
+                record = ComplianceEventRecord(
+                    event_type="ComplianceCheckCompleted",
+                    rule_id=None,
+                    rule_name=None,
+                    session_id=None,
+                    passed=None,
+                    is_hard_block=False,
+                    overall_verdict=state.get("verdict"),
+                    evaluated_at=snapshot_at,
+                )
+                self._log.setdefault(app_id, []).append(record)
+
+        for app_id in self._log:
+            self._log[app_id].sort(key=lambda r: r.evaluated_at)
+
     async def truncate(self) -> None:
         self._log.clear()
 
