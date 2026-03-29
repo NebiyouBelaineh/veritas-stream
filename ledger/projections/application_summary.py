@@ -99,6 +99,10 @@ class ApplicationSummaryProjection(Projection):
             if approved:
                 row.approved_amount_usd = str(approved)
 
+        elif et == "HumanReviewRequested":
+            # Transition: previous state → PENDING_HUMAN_REVIEW.
+            row.state = "PENDING_HUMAN_REVIEW"
+
         elif et == "HumanReviewCompleted":
             final = p.get("final_decision", "DECLINED")
             row.state = final
